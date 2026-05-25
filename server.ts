@@ -1,9 +1,15 @@
-import './src/config/env.js';
+import dns from "dns";
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+dns.setDefaultResultOrder("ipv4first");
+
+
+import { config } from './src/config/env.js';
+import './src/config/redis.js';
 import http from 'http';
 import { connectDB } from './src/config/db.js';
 import { createApp } from './src/app.js';
 
-const PORT = Number(process.env.PORT ?? 4000);
+const PORT = config.PORT;
 const app = createApp();
 
 async function startServer() {
@@ -11,7 +17,7 @@ async function startServer() {
 
   const server = http.createServer(app);
   server.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV ?? 'development'} mode on port ${PORT}`);
+    console.log(`Server running in ${config.NODE_ENV} mode on port ${PORT}`);
   });
 
   server.on('error', (error) => {

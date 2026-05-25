@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
-import { MONGO_URI } from './env.js';
+import { config } from './env.js';
 
-export async function connectDB(uri = MONGO_URI) {
+export async function connectDB(uri = config.MONGO_URI) {
   if (!uri) {
     throw new Error('MONGO_URI is not defined in environment variables');
   }

@@ -1,11 +1,22 @@
-import Redis from 'ioredis';
-import { REDIS_URL } from './env.js';
+import { Redis } from 'ioredis';
 
-export const redisClient = REDIS_URL ? new Redis(REDIS_URL) : null;
+import { config } from './config.js';
+import { logger } from '../lib/logger.js';
 
-if (redisClient) {
-  redisClient.on('connect', () => console.log('Redis connected'));
-  redisClient.on('error', (error) => console.error('Redis error:', error));
-} else {
-  console.warn('REDIS_URL is not set. Redis client will not be initialized.');
-}
+export const cacheRedis = new Redis(config.redis.url, {
+  lazyConnect: true,
+});
+
+export const bullRedis = new Redis(config.redis.url, {
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  lazyConnect: true,
+});
+
+cacheRedis.on('error', (error: Error) => {
+  logger.error('Cache Redis error', { error: error.message });
+});
+
+bullRedis.on('error', (error: Error) => {
+  logger.error('BullMQ Redis error', { error: error.message });
+});

@@ -1,16 +1,19 @@
 import mongoose from 'mongoose';
-import { MONGO_URI } from './env.js';
 
-export async function connectDB(uri = MONGO_URI) {
-  if (!uri) {
-    throw new Error('MONGO_URI is not defined in environment variables');
+import { config } from './config.js';
+import { logger } from '../lib/logger.js';
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : 'Unknown database connection error';
+
+export const connectDB = async (): Promise<void> => {
+  try {
+    const connection = await mongoose.connect(config.mongo.uri);
+    logger.info(`MongoDB connected: ${connection.connection.host}`);
+  } catch (error) {
+    logger.error('MongoDB connection failed. Shutting down.', {
+      error: getErrorMessage(error),
+    });
+    process.exit(1);
   }
-
-  mongoose.set('strictQuery', false);
-  await mongoose.connect(uri, {
-    autoIndex: false,
-    serverSelectionTimeoutMS: 5000
-  });
-
-  console.log('MongoDB connected');
-}
+};

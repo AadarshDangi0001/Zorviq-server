@@ -15,6 +15,12 @@ export const redisClient = config.REDIS_URL
     ? new Redis(redisOptions)
     : null;
 
+export const redis =
+  redisClient ??
+  (() => {
+    throw new Error("Redis is not configured. Set REDIS_URL or REDIS_HOST.");
+  })();
+
 if (redisClient) {
   redisClient.on('connect', () => console.log('connected to redis'));
   redisClient.on('error', (error: Error) => console.error('Redis error:', error));

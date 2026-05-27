@@ -169,9 +169,9 @@ export function getQueueHealth(): {
   };
 }
  
-// ─────────────────────────────────────────────
+
 // Core job processor
-// ─────────────────────────────────────────────
+
 const validator = new CodeValidatorService();
  
 export async function processGenerationJob(

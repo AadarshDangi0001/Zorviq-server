@@ -1,5 +1,5 @@
 
-import Anthropic from "@anthropic-ai/sdk";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { logger } from "../lib/logger.js";
 import { ServiceUnavailableError } from "../lib/apiError.js";
  
@@ -97,41 +97,64 @@ function recordSuccess(): void {
 // LLM Service
 // ─────────────────────────────────────────────
 export class LLMService {
-  private clients: Anthropic[];
-  private currentIndex: number = 0;
+  private client: BedrockRuntimeClient;
   private readonly maxRetries: number = 2;
-  private readonly model = "claude-sonnet-4-20250514";
+  private readonly model = process.env.BEDROCK_MODEL_ID ?? "amazon.nova-pro";
   private readonly maxTokens = 8096;
  
   constructor() {
-    const keys = [
-      process.env.ANTHROPIC_API_KEY,
-      process.env.ANTHROPIC_API_KEY_2,
-    ].filter((k): k is string => typeof k === "string" && k.length > 0);
- 
-    if (keys.length === 0) {
-      throw new Error("No Anthropic API keys configured");
-    }
- 
-    this.clients = keys.map((apiKey) => new Anthropic({ apiKey }));
+    const region = process.env.AWS_REGION ?? "us-east-1";
+    this.client = new BedrockRuntimeClient({ region });
  
     logger.info("llm.service.initialized", {
-      keyCount: this.clients.length,
+      region,
       model: this.model,
     });
   }
  
-  private nextClient(): Anthropic {
-    const client = this.clients[this.currentIndex % this.clients.length];
-    this.currentIndex++;
-    return client;
+  private async readResponseBody(body: unknown): Promise<string> {
+    if (!body) return "";
+    if (typeof body === "string") return body;
+ 
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+      if (typeof chunk === "string") {
+        chunks.push(new TextEncoder().encode(chunk));
+      } else {
+        chunks.push(chunk);
+      }
+    }
+ 
+    return new TextDecoder().decode(Buffer.concat(chunks));
+  }
+ 
+  private async parseBedrockResponse(response: { body?: unknown }): Promise<string> {
+    const rawBody = await this.readResponseBody(response.body);
+    try {
+      const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+      return (
+        (parsed.outputText as string | undefined) ??
+        (parsed.text as string | undefined) ??
+        rawBody
+      );
+    } catch {
+      return rawBody;
+    }
+  }
+ 
+  private *chunkText(text: string, size = 32): Generator<string> {
+    let index = 0;
+    while (index < text.length) {
+      yield text.slice(index, index + size);
+      index += size;
+    }
   }
  
   /**
    * Core streaming method — yields tokens one at a time via async generator.
    * Handles retries internally. Circuit breaker prevents hammering a dead API.
    *
-   * @yields Individual text tokens from Claude
+   * @yields Individual text tokens from Bedrock Nova Pro
    * @returns Final StreamResult with metadata
    */
   async *stream(
@@ -141,7 +164,7 @@ export class LLMService {
     // Check circuit breaker before making any request
     checkCircuit();
  
-    const client = this.nextClient();
+    const client = this.client;
     const startTime = Date.now();
     let fullOutput = "";
     let tokenCount = 0;
@@ -153,27 +176,29 @@ export class LLMService {
         model: this.model,
       });
  
-      const stream = await client.messages.stream({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: augmentedPrompt }],
+      const command = new InvokeModelCommand({
+        modelId: this.model,
+        body: new TextEncoder().encode(
+          JSON.stringify({
+            inputText: `${SYSTEM_PROMPT}\n\n${augmentedPrompt}`,
+            maxTokens: this.maxTokens,
+          })
+        ),
+        contentType: "application/json",
+        accept: "application/json",
       });
  
-      for await (const event of stream) {
-        if (
-          event.type === "content_block_delta" &&
-          event.delta.type === "text_delta"
-        ) {
-          const token = event.delta.text;
-          fullOutput += token;
-          recordSuccess(); // reset circuit on first successful token
-          yield token;
-        }
+      const response = await client.send(command);
+      const output = await this.parseBedrockResponse(response);
+      tokenCount = Math.ceil(output.length / 4);
  
-        if (event.type === "message_delta" && event.usage) {
-          tokenCount = event.usage.output_tokens;
-        }
+      if (output.length > 0) {
+        recordSuccess();
+      }
+ 
+      for (const chunk of this.chunkText(output, 32)) {
+        fullOutput += chunk;
+        yield chunk;
       }
  
       const durationMs = Date.now() - startTime;

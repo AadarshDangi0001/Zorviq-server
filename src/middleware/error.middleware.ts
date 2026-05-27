@@ -8,7 +8,12 @@ export const errorHandler = (
 ) => {
   console.error("Unhandled error:", error);
 
-  return res.status(500).json({
-    message: "Internal server error"
+  const statusCode = (error as any).statusCode || 500;
+  const message = error.message || "Internal server error";
+
+  return res.status(statusCode).json({
+    message,
+    success: false,
+    error: process.env.NODE_ENV === "development" ? error.stack : undefined,
   });
 };

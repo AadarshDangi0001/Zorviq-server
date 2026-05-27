@@ -1,38 +1,12 @@
 import type { CookieOptions, Request, Response } from "express";
-import jwt from "jsonwebtoken";
-import type { Profile as GoogleProfile } from "passport-google-oauth20";
-import { config, getFrontendUrl, getBackendUrl } from "../config/env.js";
-import { redisClient } from "../config/redis.js";
-import userModel, { type UserDocument } from "../models/User.model.js";
-import { sendEmail } from "../services/auth.service.js";
+import { getFrontendUrl, getBackendUrl } from "../config/env.js";
 import asyncHandler from "../utils/asyncHandler.js";
-import { getPasswordResetEmail, getVerificationEmail } from "../utils/emailTemplates.js";
+import type { UserDocument } from "../models/User.model.js";
+import * as authService from "../services/auth.service.js";
 
-type AuthTokenPayload = jwt.JwtPayload & {
-  id?: string;
-  email?: string;
-};
-
-const getErrorMessage = (error: unknown) => {
-  return error instanceof Error ? error.message : "Unknown error";
-};
-
-const verifyJwt = (token: string): AuthTokenPayload => {
-  const decoded = jwt.verify(token, config.JWT_SECRET);
-  if (typeof decoded === "string") {
-    throw new Error("Invalid token payload");
-  }
-
-  return decoded;
-};
-
-const generateToken = (
-  id: string,
-  expiresIn: jwt.SignOptions["expiresIn"] = "7d"
-) => {
-  return jwt.sign({ id }, config.JWT_SECRET, { expiresIn });
-};
-
+/**
+ * Get auth cookie options based on environment
+ */
 const getAuthCookieOptions = (req: Request): CookieOptions => {
   const host = req.headers.host || "";
   const isLocalBackend = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
@@ -47,260 +21,164 @@ const getAuthCookieOptions = (req: Request): CookieOptions => {
   };
 };
 
+/**
+ * Get clear cookie options
+ */
 const getClearCookieOptions = (req: Request): CookieOptions => {
   const { maxAge: _maxAge, ...options } = getAuthCookieOptions(req);
   return options;
 };
 
-const serializeUser = (user: UserDocument) => ({
-  id: user._id,
-  email: user.email,
-  fullname: user.fullname,
-  verified: user.verified,
-});
-
-const sendTokenResponse = (user: UserDocument, req: Request, res: Response, message: string) => {
-  const token = generateToken(String(user._id));
-
+/**
+ * Send token response
+ */
+const sendTokenResponse = (
+  user: ReturnType<typeof authService.getCurrentUser>,
+  token: string,
+  req: Request,
+  res: Response,
+  message: string
+) => {
   res.cookie("token", token, getAuthCookieOptions(req));
 
   res.status(200).json({
     message,
     success: true,
     token,
-    user: serializeUser(user),
+    user,
   });
 };
 
-// @desc    Register user
-// @route   POST /api/auth/register
+// ============ ROUTE HANDLERS ============
+
+/**
+ * @desc    Register user
+ * @route   POST /api/auth/register
+ * @access  Public
+ */
 export const register = asyncHandler(async (req, res) => {
   const { email, contact, password, fullname } = req.body;
+  const backendUrl = getBackendUrl(req);
 
-  const existingUser = await userModel.findOne({ email });
-  if (existingUser) {
-    return res.status(400).json({ message: "User with this email already exists", success: false });
-  }
-
-  const user = await userModel.create({
+  const { message } = await authService.registerUser(
     email,
-    contact,
     password,
     fullname,
-    verified: false,
+    contact,
+    backendUrl
+  );
+
+  res.status(201).json({
+    message,
+    success: true,
   });
-
-  const verifyToken = jwt.sign({ email: user.email }, config.JWT_SECRET, { expiresIn: "1h" });
-  const verifyUrl = `${getBackendUrl(req)}/api/auth/verify-email?token=${verifyToken}`;
-
-  try {
-    await sendEmail({
-      to: email,
-      subject: "Verify your Zorviq account",
-      html: getVerificationEmail(verifyUrl),
-    });
-
-    res.status(201).json({
-      message: "Registration successful. Please check your email to verify your account.",
-      success: true,
-    });
-  } catch (emailError) {
-    console.error("Email failed:", emailError);
-    await userModel.findByIdAndDelete(user._id);
-    return res.status(500).json({
-      message: "Failed to send verification email. User registration rolled back.",
-      success: false,
-    });
-  }
 });
 
-// @desc    Verify email
-// @route   GET /api/auth/verify-email
+/**
+ * @desc    Verify email
+ * @route   GET /api/auth/verify-email
+ * @access  Public
+ */
 export const verifyEmail = asyncHandler(async (req, res) => {
   const token = typeof req.query.token === "string" ? req.query.token : "";
-  if (!token) return res.status(400).json({ message: "Token is required", success: false });
 
-  let decoded: AuthTokenPayload;
-  try {
-    decoded = verifyJwt(token);
-  } catch {
-    return res.status(400).json({ message: "Invalid or expired token", success: false });
-  }
-
-  if (!decoded.email) {
-    return res.status(400).json({ message: "Invalid token", success: false });
-  }
-
-  const user = await userModel.findOne({ email: decoded.email });
-
-  if (!user) return res.status(404).json({ message: "User not found", success: false });
-  if (user.verified) return res.json({ message: "Already verified", success: true });
-
-  user.verified = true;
-  await user.save();
+  await authService.verifyUserEmail(token);
 
   res.json({ message: "Email verified successfully", success: true });
 });
 
-// @desc    Login user
-// @route   POST /api/auth/login
+/**
+ * @desc    Login user
+ * @route   POST /api/auth/login
+ * @access  Public
+ */
 export const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await userModel.findOne({ email }).select("+password");
-  if (!user || !(await user.comparePassword(password))) {
-    return res.status(401).json({ message: "Invalid email or password", success: false });
-  }
+  const { user, token } = await authService.loginUser(email, password);
 
-  if (!user.verified) {
-    return res.status(403).json({ message: "Please verify your email first", success: false });
-  }
-
-  sendTokenResponse(user, req, res, "Login successful");
+  sendTokenResponse(user, token, req, res, "Login successful");
 });
 
-// @desc    Get current user
-// @route   GET /api/auth/get-me
+/**
+ * @desc    Get current user
+ * @route   GET /api/auth/get-me
+ * @access  Private
+ */
 export const getMe = asyncHandler(async (req, res) => {
   const user = req.user as UserDocument | undefined;
-  if (!user) {
-    return res.status(401).json({ message: "Unauthorized", success: false });
-  }
+  const userData = authService.getCurrentUser(user);
 
   res.status(200).json({
     success: true,
-    user: serializeUser(user),
+    user: userData,
   });
 });
 
-// @desc    Forgot password
-// @route   POST /api/auth/forgot-password
+/**
+ * @desc    Forgot password
+ * @route   POST /api/auth/forgot-password
+ * @access  Public
+ */
 export const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.body;
-  const user = await userModel.findOne({ email });
+  const frontendUrl = getFrontendUrl(req);
 
-  if (!user) return res.status(404).json({ message: "User not found", success: false });
-
-  const resetToken = generateToken(String(user._id), "1h");
-  user.resetPasswordToken = resetToken;
-  user.resetPasswordExpire = new Date(Date.now() + 3600000);
-  await user.save();
-
-  const resetUrl = `${getFrontendUrl(req)}/reset-password?token=${resetToken}`;
-
-  await sendEmail({
-    to: email,
-    subject: "Reset your Zorviq password",
-    html: getPasswordResetEmail(resetUrl),
-  });
+  await authService.sendPasswordResetEmail(email, frontendUrl);
 
   res.json({ message: "Password reset link sent", success: true });
 });
 
-// @desc    Reset password
-// @route   POST /api/auth/reset-password
+/**
+ * @desc    Reset password
+ * @route   POST /api/auth/reset-password
+ * @access  Public
+ */
 export const resetPassword = asyncHandler(async (req, res) => {
   const { token, newPassword } = req.body;
 
-  let decoded: AuthTokenPayload;
-  try {
-    decoded = verifyJwt(token);
-  } catch {
-    return res.status(400).json({ message: "Invalid or expired token", success: false });
-  }
-
-  if (!decoded.id) {
-    return res.status(400).json({ message: "Invalid token", success: false });
-  }
-
-  const user = await userModel.findOne({
-    _id: decoded.id,
-    resetPasswordToken: token,
-    resetPasswordExpire: { $gt: new Date() },
-  });
-
-  if (!user) return res.status(400).json({ message: "Invalid or expired token", success: false });
-
-  user.password = newPassword;
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpire = undefined;
-  await user.save();
+  await authService.resetUserPassword(token, newPassword);
 
   res.json({ message: "Password reset successful", success: true });
 });
 
-// @desc    Google auth callback
-// @route   GET /api/auth/google/callback
+/**
+ * @desc    Google auth callback
+ * @route   GET /api/auth/google/callback
+ * @access  Public
+ */
 export const googleCallback = asyncHandler(async (req, res) => {
-  const profile = req.user as GoogleProfile | undefined;
-  const email = profile?.emails?.[0]?.value;
+  const profile = req.user as any;
 
-  if (!profile || !email) {
-    return res.status(400).json({ message: "Google account email not found", success: false });
-  }
-
-  let user = await userModel.findOne({ email });
-
-  if (!user) {
-    user = await userModel.create({
-      email,
-      googleId: profile.id,
-      fullname: profile.displayName || email.split("@")[0],
-      verified: true,
-    });
-  } else if (!user.verified) {
-    user.verified = true;
-    await user.save();
-  }
-
-  const token = generateToken(String(user._id));
+  const { token } = await authService.handleGoogleAuth(profile);
 
   res.cookie("token", token, getAuthCookieOptions(req));
   res.redirect(getFrontendUrl(req));
 });
 
-// @desc    Resend verification email
-// @route   POST /api/auth/resend-verification
+/**
+ * @desc    Resend verification email
+ * @route   POST /api/auth/resend-verification
+ * @access  Public
+ */
 export const resendVerification = asyncHandler(async (req, res) => {
   const { email } = req.body;
-  const user = await userModel.findOne({ email });
+  const backendUrl = getBackendUrl(req);
 
-  if (!user) return res.status(404).json({ message: "User not found", success: false });
-  if (user.verified) return res.status(400).json({ message: "Already verified", success: false });
-
-  const verifyToken = jwt.sign({ email: user.email }, config.JWT_SECRET, { expiresIn: "1h" });
-  const verifyUrl = `${getBackendUrl(req)}/api/auth/verify-email?token=${verifyToken}`;
-
-  await sendEmail({
-    to: email,
-    subject: "Verify your Zorviq account",
-    html: getVerificationEmail(verifyUrl),
-  });
+  await authService.resendVerificationEmail(email, backendUrl);
 
   res.json({ message: "Verification email resent", success: true });
 });
 
-// @desc    Logout user
-// @route   POST /api/auth/logout
+/**
+ * @desc    Logout user
+ * @route   GET|POST /api/auth/logout
+ * @access  Private
+ */
 export const logoutUser = asyncHandler(async (req, res) => {
-  let token = req.cookies?.token;
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-  }
+  const token = authService.getTokenFromRequest(req) || undefined;
 
-  if (token) {
-    try {
-      const decoded = verifyJwt(token);
-      if (redisClient && decoded.exp) {
-        const expireTime = decoded.exp - Math.floor(Date.now() / 1000);
-        if (expireTime > 0) {
-          await redisClient.set(`bl_${token}`, "blocked", "EX", expireTime);
-        }
-      }
-    } catch (error) {
-      console.warn("Logout token blocklist skipped:", getErrorMessage(error));
-    }
-  }
+  await authService.logoutUser(token);
 
   res.clearCookie("token", getClearCookieOptions(req));
   res.status(200).json({ message: "Logged out successfully", success: true });

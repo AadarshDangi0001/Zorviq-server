@@ -24,7 +24,7 @@
   },
   "homepage": "https://github.com/AadarshDangi0001/Zorviq-server#readme",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1054.0",
     "@sentry/node": "^10.53.1",
     "@types/passport-google-oauth20": "^2.0.17",
     "bcryptjs": "^3.0.3",

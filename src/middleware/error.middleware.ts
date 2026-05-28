@@ -1,3 +1,4 @@
+import { ApiError } from "../lib/apiError.js";
 import type { NextFunction, Request, Response } from "express";
 
 export const errorHandler = (
@@ -8,12 +9,22 @@ export const errorHandler = (
 ) => {
   console.error("Unhandled error:", error);
 
-  const statusCode = (error as any).statusCode || 500;
-  const message = error.message || "Internal server error";
+  if (error instanceof ApiError) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: {
+        code: error.code,
+        message: error.message,
+        ...(error.meta ? { meta: error.meta } : {}),
+      },
+    });
+  }
 
-  return res.status(statusCode).json({
-    message,
+  return res.status(500).json({
     success: false,
-    error: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    error: {
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Internal server error",
+    },
   });
 };

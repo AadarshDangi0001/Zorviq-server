@@ -6,7 +6,24 @@ import { generationRepository } from "../repositories/generation.repository.js";
 import { REDIS_KEYS } from "../queue/generation.queue.js";
 import { logger } from "../lib/logger.js";
 import { NotFoundError, ValidationError } from "../lib/apiError.js";
-import type { JWTPayload } from "../types/index.js";
+import type { UserDocument } from "../models/User.model.js";
+
+type UserContext = {
+  userId: string;
+  plan: "free" | "pro";
+};
+
+const getUserContext = (req: Request): UserContext => {
+  const user = req.user as UserDocument | undefined;
+  if (!user?._id) {
+    throw new ValidationError("Unauthorized user.");
+  }
+
+  return {
+    userId: String(user._id),
+    plan: "free",
+  };
+};
  
 
 export async function enqueueGeneration(
@@ -15,7 +32,7 @@ export async function enqueueGeneration(
   next: NextFunction
 ): Promise<void> {
   try {
-    const user = req.user as JWTPayload;
+    const { userId, plan } = getUserContext(req);
  
     const {
       projectId,
@@ -34,10 +51,10 @@ export async function enqueueGeneration(
     }
  
     const result = await generationService.enqueue(
-      user.sub,
+      userId,
       projectId,
       prompt,
-      user.plan,
+      plan,
       { isSectionEdit, sectionId, sectionHtml }
     );
  
@@ -60,10 +77,10 @@ export async function streamGeneration(
   next: NextFunction
 ): Promise<void> {
   const { jobId } = req.params;
-  const user = req.user as JWTPayload;
+  const { userId } = getUserContext(req);
  
   // Validate the job belongs to this user before opening SSE
-  const gen = await generationRepository.findById(jobId, user.sub).catch(
+  const gen = await generationRepository.findById(jobId, userId).catch(
     () => null
   );
   if (!gen) {
@@ -91,7 +108,7 @@ export async function streamGeneration(
     res.end();
   };
  
-  logger.info("sse.connected", { jobId, userId: user.sub });
+  logger.info("sse.connected", { jobId, userId });
  
   // ── 1. Check if job already done (client reconnect case) ────────────
   const currentStatus = await redis.get(REDIS_KEYS.jobStatus(jobId));
@@ -165,7 +182,7 @@ export async function streamGeneration(
     clearInterval(heartbeat);
     subscriber.unsubscribe().catch(() => {});
     subscriber.quit().catch(() => {});
-    logger.info("sse.disconnected", { jobId, userId: user.sub });
+    logger.info("sse.disconnected", { jobId, userId });
   };
  
   req.on("close", () => {
@@ -188,10 +205,10 @@ export async function getGenerationStatus(
   next: NextFunction
 ): Promise<void> {
   try {
-    const user = req.user as JWTPayload;
+    const { userId } = getUserContext(req);
     const { jobId } = req.params;
  
-    const result = await generationService.getStatus(jobId, user.sub);
+    const result = await generationService.getStatus(jobId, userId);
  
     res.json({ success: true, data: result });
   } catch (err) {
@@ -208,7 +225,7 @@ export async function getGenerationHistory(
   next: NextFunction
 ): Promise<void> {
   try {
-    const user = req.user as JWTPayload;
+    const { userId } = getUserContext(req);
     const { projectId } = req.params;
     const limit = Math.min(
       parseInt(req.query.limit as string ?? "10", 10),
@@ -217,7 +234,7 @@ export async function getGenerationHistory(
  
     const history = await generationService.getHistory(
       projectId,
-      user.sub,
+      userId,
       limit
     );
  

@@ -324,8 +324,8 @@ export async function processGenerationJob(
     // Signal SSE subscribers of failure
     await redis.publish(channel, "__ERROR__").catch(() => {});
  
-    // Re-throw so p-queue marks the job as failed
-    throw err;
+    // Swallow error so background job failure does not crash the process
+    return;
   }
 }
  

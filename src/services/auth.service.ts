@@ -5,7 +5,13 @@ import { redisClient } from "../config/redis.js";
 import { sendEmail } from "./mail.service.js";
 import { getPasswordResetEmail, getVerificationEmail } from "../utils/emailTemplates.js";
 import { userRepository } from "../repositories/user.repository.js";
-import { ApiError } from "../lib/apiError.js";
+import {
+  ApiError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from "../lib/apiError.js";
 import type { Request } from "express";
 import type { UserDocument } from "../models/User.model.js";
 
@@ -31,12 +37,12 @@ const verifyJwt = (token: string): AuthTokenPayload => {
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
     if (typeof decoded === "string") {
-      throw ApiError(401, "Invalid token payload");
+      throw new UnauthorizedError("Invalid token payload");
     }
     return decoded;
   } catch (error) {
-    if (error instanceof Error && error.name === "ApiError") throw error;
-    throw ApiError(401, "Invalid or expired token");
+    if (error instanceof ApiError) throw error;
+    throw new UnauthorizedError("Invalid or expired token");
   }
 };
 
@@ -77,7 +83,7 @@ export const registerUser = async (
   // Check if user already exists
   const existingUser = await userRepository.findByEmail(email);
   if (existingUser) {
-    throw ApiError(400, "User with this email already exists");
+    throw new ValidationError("User with this email already exists");
   }
 
   // Create user
@@ -102,7 +108,11 @@ export const registerUser = async (
   } catch (error) {
     // Rollback user creation if email fails
     await userRepository.deleteById(String(user._id));
-    throw ApiError(500, "Failed to send verification email. Registration rolled back.");
+    throw new ApiError(
+      500,
+      "INTERNAL_SERVER_ERROR",
+      "Failed to send verification email. Registration rolled back."
+    );
   }
 
   return {
@@ -116,22 +126,22 @@ export const registerUser = async (
  */
 export const verifyUserEmail = async (token: string): Promise<UserDocument> => {
   if (!token) {
-    throw ApiError(400, "Token is required");
+    throw new ValidationError("Token is required");
   }
 
   const decoded = verifyJwt(token);
 
   if (!decoded.email) {
-    throw ApiError(400, "Invalid token");
+    throw new ValidationError("Invalid token");
   }
 
   const user = await userRepository.findByEmail(decoded.email);
   if (!user) {
-    throw ApiError(404, "User not found");
+    throw new NotFoundError("User not found");
   }
 
   if (user.verified) {
-    throw ApiError(400, "Already verified");
+    throw new ValidationError("Already verified");
   }
 
   user.verified = true;
@@ -150,11 +160,11 @@ export const loginUser = async (
   const user = await userRepository.findByEmailWithPassword(email);
 
   if (!user || !(await user.comparePassword(password))) {
-    throw ApiError(401, "Invalid email or password");
+    throw new UnauthorizedError("Invalid email or password");
   }
 
   if (!user.verified) {
-    throw ApiError(403, "Please verify your email first");
+    throw new ForbiddenError("Please verify your email first");
   }
 
   const token = generateToken(String(user._id));
@@ -170,7 +180,7 @@ export const loginUser = async (
  */
 export const getCurrentUser = (user: UserDocument | undefined): ReturnType<typeof serializeUser> => {
   if (!user) {
-    throw ApiError(401, "Unauthorized");
+    throw new UnauthorizedError();
   }
 
   return serializeUser(user);
@@ -182,7 +192,7 @@ export const getCurrentUser = (user: UserDocument | undefined): ReturnType<typeo
 export const sendPasswordResetEmail = async (email: string, frontendUrl?: string): Promise<void> => {
   const user = await userRepository.findByEmail(email);
   if (!user) {
-    throw ApiError(404, "User not found");
+    throw new NotFoundError("User not found");
   }
 
   const resetToken = generateResetToken(String(user._id));
@@ -206,12 +216,12 @@ export const resetUserPassword = async (token: string, newPassword: string): Pro
   const decoded = verifyJwt(token);
 
   if (!decoded.id) {
-    throw ApiError(400, "Invalid token");
+    throw new ValidationError("Invalid token");
   }
 
   const user = await userRepository.findByResetToken(String(decoded.id), token);
   if (!user) {
-    throw ApiError(400, "Invalid or expired token");
+    throw new ValidationError("Invalid or expired token");
   }
 
   user.password = newPassword;
@@ -229,7 +239,7 @@ export const handleGoogleAuth = async (
   const email = profile?.emails?.[0]?.value;
 
   if (!profile || !email) {
-    throw ApiError(400, "Google account email not found");
+    throw new ValidationError("Google account email not found");
   }
 
   let user = await userRepository.findByEmail(email);
@@ -261,11 +271,11 @@ export const resendVerificationEmail = async (email: string, backendUrl?: string
   const user = await userRepository.findByEmail(email);
 
   if (!user) {
-    throw ApiError(404, "User not found");
+    throw new NotFoundError("User not found");
   }
 
   if (user.verified) {
-    throw ApiError(400, "User already verified");
+    throw new ValidationError("User already verified");
   }
 
   const verifyToken = generateVerificationToken(email);

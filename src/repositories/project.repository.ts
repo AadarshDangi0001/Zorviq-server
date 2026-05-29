@@ -41,7 +41,7 @@ export class ProjectRepository {
       },
       { $set: data },
       {
-        new: true,
+        returnDocument: "after",
       }
     ).exec();
   }

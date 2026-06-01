@@ -1,8 +1,6 @@
 import { Resend } from "resend";
 import { config } from "../config/env.js";
 
-const resend = new Resend(config.RESEND_API_KEY);
-
 type SendEmailOptions = {
   to: string | string[];
   subject: string;
@@ -15,6 +13,7 @@ export const sendEmail = async ({ to, subject, html }: SendEmailOptions) => {
       throw new Error("RESEND_API_KEY is not configured");
     }
 
+    const resend = new Resend(config.RESEND_API_KEY);
     const data = await resend.emails.send({
       from: "onboarding@resend.dev",
       to,

@@ -8,6 +8,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { config, isGoogleAuthConfigured } from './config/env.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import authRouter from './routes/auth.routes.js';
+import projectRouter from './routes/project.routes.js';
 
 const allowedFrontendOrigins = new Set(
   config.FRONTEND_ORIGINS.split(',')
@@ -59,6 +60,7 @@ export function createApp() {
   });
   
   app.use('/api/auth', authRouter);
+  app.use('/api/projects', projectRouter);
 
 
   app.use((_req, res) => {

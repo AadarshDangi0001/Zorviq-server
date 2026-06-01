@@ -1,0 +1,629 @@
+{
+  "info": {
+    "_postman_id": "b6d7a81c-f4fd-42be-9871-6e79a609f4fb",
+    "name": "Zorviq API - Full Backend Test Suite",
+    "description": "Import this collection with the Zorviq Local Environment. It targets the actual routes in this backend: /health, /api/auth, and /api/projects. Registration sends a verification email and does not return a JWT, so set VERIFY_EMAIL_TOKEN from the email link before running Verify Email, or use LOGIN_EMAIL/LOGIN_PASSWORD for an already verified user.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Response time < 2000ms', function () {",
+          "  pm.expect(pm.response.responseTime).to.be.below(2000);",
+          "});",
+          "",
+          "pm.test('No password fields leak in response', function () {",
+          "  const body = pm.response.text();",
+          "  pm.expect(body).to.not.include('passwordHash');",
+          "  pm.expect(body).to.not.include('\"password\"');",
+          "});",
+          "",
+          "const contentType = pm.response.headers.get('Content-Type') || '';",
+          "if (contentType.includes('application/json') && pm.response.text()) {",
+          "  pm.test('JSON response has expected API shape', function () {",
+          "    const json = pm.response.json();",
+          "    pm.expect(json).to.be.an('object');",
+          "    pm.expect(json).to.have.property('success');",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Environment Setup",
+      "item": [
+        {
+          "name": "Initialize Run Variables",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const runId = Date.now().toString();",
+                  "pm.environment.set('RUN_ID', runId);",
+                  "pm.environment.set('TEST_EMAIL', `zorviq_${runId}@example.com`);",
+                  "pm.environment.set('TEST_CONTACT', runId.slice(-10).padStart(10, '9'));",
+                  "pm.environment.set('TEST_FULLNAME', 'Zorviq Postman User');",
+                  "pm.environment.set('LOGIN_EMAIL', pm.environment.get('LOGIN_EMAIL') || pm.environment.get('TEST_EMAIL'));",
+                  "pm.environment.set('LOGIN_PASSWORD', pm.environment.get('LOGIN_PASSWORD') || pm.environment.get('TEST_PASSWORD'));",
+                  "pm.environment.unset('AUTH_TOKEN');",
+                  "pm.environment.unset('USER_ID');",
+                  "pm.environment.unset('PROJECT_ID');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Environment variables initialized', function () {",
+                  "  pm.expect(pm.environment.get('TEST_EMAIL')).to.include('@example.com');",
+                  "  pm.expect(pm.environment.get('TEST_CONTACT')).to.match(/^\\d{10}$/);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BASE_URL}}/health",
+            "description": "Run this first. It creates unique email/contact values for this run."
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Health endpoint is OK', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BASE_URL}}/health"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 - Auth",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Register returns 201 or known duplicate/config error', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([201, 400, 500]);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (pm.response.code === 201) {",
+                  "  pm.test('Registration success is true', function () { pm.expect(json.success).to.eql(true); });",
+                  "} else {",
+                  "  console.warn('Registration did not complete. Check duplicate email or RESEND_API_KEY/email config.', json.message);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{TEST_EMAIL}}\",\n  \"contact\": \"{{TEST_CONTACT}}\",\n  \"password\": \"{{TEST_PASSWORD}}\",\n  \"fullname\": \"{{TEST_FULLNAME}}\"\n}"
+            },
+            "url": "{{BASE_URL}}/api/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Resend Verification Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Resend verification returns expected status', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 500]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{TEST_EMAIL}}\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/resend-verification",
+            "description": "Use the email link to copy the token query value into VERIFY_EMAIL_TOKEN."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Email (Manual Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('VERIFY_EMAIL_TOKEN');",
+                  "pm.test('Verify email status is correct', function () {",
+                  "  if (token) pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]);",
+                  "  else pm.expect(pm.response.code).to.eql(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/verify-email?token={{VERIFY_EMAIL_TOKEN}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "verify-email"],
+              "query": [{ "key": "token", "value": "{{VERIFY_EMAIL_TOKEN}}" }]
+            },
+            "description": "Set VERIFY_EMAIL_TOKEN from the verification email link before running this request."
+          },
+          "response": []
+        },
+        {
+          "name": "Login User - Stores AUTH_TOKEN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login returns success or verification-required status', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 401, 403]);",
+                  "});",
+                  "const json = pm.response.json();",
+                  "if (json.success && json.token) {",
+                  "  pm.environment.set('AUTH_TOKEN', json.token);",
+                  "  if (json.user && json.user.id) pm.environment.set('USER_ID', json.user.id);",
+                  "}",
+                  "pm.test('AUTH_TOKEN stored when login succeeds', function () {",
+                  "  if (pm.response.code === 200) pm.expect(pm.environment.get('AUTH_TOKEN')).to.be.a('string').and.not.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{LOGIN_EMAIL}}\",\n  \"password\": \"{{LOGIN_PASSWORD}}\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/login",
+            "description": "Use a verified user here. If you just registered, verify email first."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const json = pm.response.json();",
+                  "pm.test('Current user returned', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.user).to.have.property('email');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/auth/get-me"
+          },
+          "response": []
+        },
+        {
+          "name": "Forgot Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Forgot password returns expected status', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 404, 500]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{LOGIN_EMAIL}}\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/forgot-password",
+            "description": "Copy reset token from the reset-password email URL into RESET_PASSWORD_TOKEN."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password (Manual Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('RESET_PASSWORD_TOKEN');",
+                  "pm.test('Reset password status is correct', function () {",
+                  "  if (token) pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
+                  "  else pm.expect(pm.response.code).to.eql(400);",
+                  "});",
+                  "if (pm.response.code === 200) pm.environment.set('LOGIN_PASSWORD', pm.environment.get('NEW_PASSWORD'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{RESET_PASSWORD_TOKEN}}\",\n  \"newPassword\": \"{{NEW_PASSWORD}}\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/reset-password"
+          },
+          "response": []
+        },
+        {
+          "name": "Logout User (POST)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "pm.test('Logout success', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/auth/logout"
+          },
+          "response": []
+        },
+        {
+          "name": "Google Auth Entry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Google auth is either configured redirect or service unavailable', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([302, 503]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BASE_URL}}/api/auth/google",
+            "description": "This is usually tested in a browser. Postman should see 302 if configured, 503 if not configured."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 - Auth Negative Tests",
+      "item": [
+        {
+          "name": "Register Invalid Body",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Validation fails', function () { pm.expect(pm.response.code).to.eql(400); });"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"not-an-email\",\n  \"contact\": \"123\",\n  \"password\": \"123\",\n  \"fullname\": \"A\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Duplicate or config error returned', function () { pm.expect(pm.response.code).to.be.oneOf([400, 500]); });"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{TEST_EMAIL}}\",\n  \"contact\": \"{{TEST_CONTACT}}\",\n  \"password\": \"{{TEST_PASSWORD}}\",\n  \"fullname\": \"{{TEST_FULLNAME}}\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Login Wrong Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Wrong password rejected', function () { pm.expect(pm.response.code).to.be.oneOf([401, 403]); });"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{LOGIN_EMAIL}}\",\n  \"password\": \"wrong-password\"\n}" },
+            "url": "{{BASE_URL}}/api/auth/login"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me Without Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Missing token rejected', function () { pm.expect(pm.response.code).to.eql(401); });"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{BASE_URL}}/api/auth/get-me"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 - Projects",
+      "item": [
+        {
+          "name": "Create Project - Stores PROJECT_ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const json = pm.response.json();",
+                  "pm.test('Project created', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.project).to.have.property('_id');",
+                  "});",
+                  "pm.environment.set('PROJECT_ID', json.project._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{PROJECT_NAME}} {{RUN_ID}}\"\n}" },
+            "url": "{{BASE_URL}}/api/projects"
+          },
+          "response": []
+        },
+        {
+          "name": "List Projects",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const json = pm.response.json();",
+                  "pm.test('Projects list returned', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.projects).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/projects"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const json = pm.response.json();",
+                  "pm.test('Project detail returned', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.project._id).to.eql(pm.environment.get('PROJECT_ID'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/projects/{{PROJECT_ID}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Rename Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const json = pm.response.json();",
+                  "pm.test('Project renamed', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.project.name).to.eql(pm.environment.get('RENAMED_PROJECT_NAME'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"{{RENAMED_PROJECT_NAME}}\"\n}" },
+            "url": "{{BASE_URL}}/api/projects/{{PROJECT_ID}}/rename"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const json = pm.response.json();",
+                  "pm.test('Project deleted', function () {",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.deleted).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/projects/{{PROJECT_ID}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 - Project Negative Tests",
+      "item": [
+        {
+          "name": "Create Project Without Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Missing token rejected', function () { pm.expect(pm.response.code).to.eql(401); });"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Token Project\"\n}" },
+            "url": "{{BASE_URL}}/api/projects"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Project Invalid ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Invalid id validation fails', function () { pm.expect(pm.response.code).to.eql(400); });"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/projects/not-a-mongo-id"
+          },
+          "response": []
+        },
+        {
+          "name": "Rename Project Missing Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Missing name validation fails', function () { pm.expect(pm.response.code).to.eql(400); });"] }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": "{{BASE_URL}}/api/projects/{{PROJECT_ID}}/rename"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Deleted Project",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Deleted project not found', function () { pm.expect(pm.response.code).to.eql(404); });"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{AUTH_TOKEN}}", "type": "string" }] },
+            "header": [],
+            "url": "{{BASE_URL}}/api/projects/{{PROJECT_ID}}"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

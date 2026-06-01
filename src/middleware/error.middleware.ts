@@ -1,3 +1,4 @@
+import { ApiError } from "../lib/apiError.js";
 import type { NextFunction, Request, Response } from "express";
 import { ApiError } from "../lib/apiError.js";
 
@@ -11,14 +12,20 @@ export const errorHandler = (
 
   if (error instanceof ApiError) {
     return res.status(error.statusCode).json({
-      message: error.message,
       success: false,
-      ...(error.errors ? { errors: error.errors } : {})
+      error: {
+        code: error.code,
+        message: error.message,
+        ...(error.meta ? { meta: error.meta } : {}),
+      },
     });
   }
 
   return res.status(500).json({
-    message: "Internal server error",
-    success: false
+    success: false,
+    error: {
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Internal server error",
+    },
   });
 };

@@ -43,6 +43,14 @@ const projectSchema = new mongoose.Schema<ProjectFields, ProjectModel>(
 
 projectSchema.index({ userId: 1, isDeleted: 1, updatedAt: -1 });
 projectSchema.index({ _id: 1, userId: 1, isDeleted: 1 });
+projectSchema.index(
+    { userId: 1, name: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { isDeleted: false },
+        collation: { locale: "en", strength: 2 },
+    }
+);
 
 const Project =
     (mongoose.models.Project as ProjectModel | undefined) ??

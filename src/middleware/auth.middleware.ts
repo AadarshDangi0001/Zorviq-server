@@ -57,3 +57,5 @@ export const authenticateUser = async (req: Request, res: Response, next: NextFu
   }
 };
 
+export const authMiddleware = authenticateUser;
+

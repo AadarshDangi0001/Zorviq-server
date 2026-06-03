@@ -4,6 +4,7 @@ import { projectRepository } from "../repositories/project.repository.js";
 import {
   enqueueGeneration,
   buildPromptCacheKey,
+  buildRequestHash,
   getQueueHealth,
   REDIS_KEYS,
   CACHE_TTL,
@@ -11,6 +12,7 @@ import {
 } from "../queue/generation.queue.js";
 import { RagService } from "./rag.service.js";
 import { RateLimiterService } from "./rateLimiter.service.js";
+import { CACHE_KEYS, cacheService } from "./cache.service.js";
 import { logger } from "../lib/logger.js";
 import {
   NotFoundError,
@@ -61,7 +63,6 @@ export class GenerationService {
     userId: string,
     projectId: string,
     prompt: string,
-    plan: "free" | "pro",
     opts: EnqueueOptions = {}
   ): Promise<EnqueueResult> {
     const { isSectionEdit = false, sectionId = null, sectionHtml = null } = opts;
@@ -90,6 +91,7 @@ export class GenerationService {
     await this.rateLimiter.check(userId);
  
     // ── 4. Check per-user active generation limit ───────────────────────
+    await generationRepository.failStaleActiveForUser(userId);
     const activeCount = await generationRepository.countActive(userId);
     if (activeCount >= this.maxActivePerUser) {
       throw new RateLimitError(
@@ -106,11 +108,34 @@ export class GenerationService {
     }
  
     // ── 6. Prompt cache check ────────────────────────────────────────────
-    const cacheKey = buildPromptCacheKey(trimmedPrompt, isSectionEdit, sectionId);
+    const cacheScope = {
+      userId,
+      projectId,
+      currentCode: project.currentCode ?? null,
+      sectionHtml,
+    };
+    const requestHash = buildRequestHash(
+      trimmedPrompt,
+      isSectionEdit,
+      sectionId,
+      cacheScope
+    );
+    const cacheKey = buildPromptCacheKey(
+      trimmedPrompt,
+      isSectionEdit,
+      sectionId,
+      cacheScope
+    );
     const cachedOutput = await redis.get(cacheKey);
  
     if (cachedOutput) {
-      logger.info("generation.cache_hit", { userId, projectId, cacheKey });
+      logger.info("generation.cache_hit", {
+        userId,
+        projectId,
+        requestHash,
+        cacheKey,
+        outputLength: cachedOutput.length,
+      });
  
       // Create a generation record (for history) and immediately mark done
       const gen = await generationRepository.create({
@@ -131,6 +156,10 @@ export class GenerationService {
           durationMs: 0,
         }),
         projectRepository.updateCode(projectId, userId, cachedOutput),
+        cacheService.del(
+          CACHE_KEYS.projectList(userId),
+          CACHE_KEYS.projectDetail(userId, projectId)
+        ),
         // Mark job status in Redis so SSE clients don't hang
         redis.set(
           REDIS_KEYS.jobStatus(gen._id.toString()),
@@ -147,6 +176,13 @@ export class GenerationService {
         code: cachedOutput,
       };
     }
+
+    logger.info("generation.cache_miss", {
+      userId,
+      projectId,
+      requestHash,
+      cacheKey,
+    });
  
     // ── 7. RAG retrieval — fetch similar components ──────────────────────
     let augmentedPrompt: string;
@@ -215,17 +251,17 @@ export class GenerationService {
       originalPrompt: trimmedPrompt,
       isSectionEdit,
       sectionId,
+      sectionHtml,
       currentCode: project.currentCode ?? null,
     };
  
-    const priority = plan === "pro" ? 10 : 1;
-    await enqueueGeneration(jobData, priority);
- 
+    await enqueueGeneration(jobData);
+
     logger.info("generation.enqueued", {
       generationId,
       projectId,
       userId,
-      priority,
+      requestHash,
       queueDepth: queueHealth.pending,
     });
  
@@ -248,23 +284,21 @@ export class GenerationService {
     status: string;
     output?: string | null;
   }> {
+    const gen = await generationRepository.findById(generationId, userId);
+    if (!gen) throw new NotFoundError("Generation not found.");
+
     // Check Redis first (faster)
     const redisStatus = await redis.get(
       REDIS_KEYS.jobStatus(generationId)
     );
  
     if (redisStatus === "done") {
-      const output = await generationRepository.getOutput(generationId);
-      return { status: "done", output };
+      return { status: "done", output: gen.output };
     }
  
     if (redisStatus === "failed") {
       return { status: "failed" };
     }
- 
-    // Fall back to DB
-    const gen = await generationRepository.findById(generationId, userId);
-    if (!gen) throw new NotFoundError("Generation not found.");
  
     return { status: gen.status, output: gen.output };
   }

@@ -1,10 +1,12 @@
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import type { Profile as GoogleProfile } from "passport-google-oauth20";
 import { config } from "../config/env.js";
-import { redisClient } from "../config/redis.js";
 import { sendEmail } from "./mail.service.js";
 import { getPasswordResetEmail, getVerificationEmail } from "../utils/emailTemplates.js";
 import { userRepository } from "../repositories/user.repository.js";
+import { logger } from "../lib/logger.js";
+import { CACHE_KEYS, cacheService } from "./cache.service.js";
 import {
   ApiError,
   ForbiddenError,
@@ -53,11 +55,13 @@ const generateVerificationToken = (email: string): string => {
   return jwt.sign({ email }, config.JWT_SECRET, { expiresIn: "1h" });
 };
 
-/**
- * Generate password reset token
- */
-const generateResetToken = (userId: string): string => {
-  return generateToken(userId, "1h");
+const generatePasswordResetToken = (): string => crypto.randomBytes(32).toString("hex");
+
+const hashToken = (token: string): string =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+const invalidateAuthUser = async (userId: string): Promise<void> => {
+  await cacheService.del(CACHE_KEYS.authUser(userId));
 };
 
 /**
@@ -106,13 +110,17 @@ export const registerUser = async (
       html: getVerificationEmail(verifyUrl),
     });
   } catch (error) {
-    // Rollback user creation if email fails
-    await userRepository.deleteById(String(user._id));
-    throw new ApiError(
-      500,
-      "INTERNAL_SERVER_ERROR",
-      "Failed to send verification email. Registration rolled back."
-    );
+    logger.error("auth.verification_email_failed", {
+      userId: String(user._id),
+      email,
+      error,
+    });
+
+    return {
+      user: serializeUser(user),
+      message:
+        "Registration successful, but verification email delivery failed. Please request a new verification email.",
+    };
   }
 
   return {
@@ -146,6 +154,7 @@ export const verifyUserEmail = async (token: string): Promise<UserDocument> => {
 
   user.verified = true;
   await userRepository.saveUser(user);
+  await invalidateAuthUser(String(user._id));
 
   return user;
 };
@@ -192,13 +201,14 @@ export const getCurrentUser = (user: UserDocument | undefined): ReturnType<typeo
 export const sendPasswordResetEmail = async (email: string, frontendUrl?: string): Promise<void> => {
   const user = await userRepository.findByEmail(email);
   if (!user) {
-    throw new NotFoundError("User not found");
+    return;
   }
 
-  const resetToken = generateResetToken(String(user._id));
-  user.resetPasswordToken = resetToken;
+  const resetToken = generatePasswordResetToken();
+  user.resetPasswordToken = hashToken(resetToken);
   user.resetPasswordExpire = new Date(Date.now() + 3600000); // 1 hour
   await userRepository.saveUser(user);
+  await invalidateAuthUser(String(user._id));
 
   const resetUrl = `${frontendUrl || config.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
@@ -213,13 +223,11 @@ export const sendPasswordResetEmail = async (email: string, frontendUrl?: string
  * Reset password
  */
 export const resetUserPassword = async (token: string, newPassword: string): Promise<void> => {
-  const decoded = verifyJwt(token);
-
-  if (!decoded.id) {
+  if (!token) {
     throw new ValidationError("Invalid token");
   }
 
-  const user = await userRepository.findByResetToken(String(decoded.id), token);
+  const user = await userRepository.findByResetToken(hashToken(token));
   if (!user) {
     throw new ValidationError("Invalid or expired token");
   }
@@ -228,6 +236,7 @@ export const resetUserPassword = async (token: string, newPassword: string): Pro
   user.resetPasswordToken = undefined;
   user.resetPasswordExpire = undefined;
   await userRepository.saveUser(user);
+  await invalidateAuthUser(String(user._id));
 };
 
 /**
@@ -254,6 +263,7 @@ export const handleGoogleAuth = async (
   } else if (!user.verified) {
     user.verified = true;
     await userRepository.saveUser(user);
+    await invalidateAuthUser(String(user._id));
   }
 
   const token = generateToken(String(user._id));
@@ -271,11 +281,11 @@ export const resendVerificationEmail = async (email: string, backendUrl?: string
   const user = await userRepository.findByEmail(email);
 
   if (!user) {
-    throw new NotFoundError("User not found");
+    return;
   }
 
   if (user.verified) {
-    throw new ValidationError("User already verified");
+    return;
   }
 
   const verifyToken = generateVerificationToken(email);
@@ -296,10 +306,10 @@ export const logoutUser = async (token?: string): Promise<void> => {
 
   try {
     const decoded = verifyJwt(token);
-    if (redisClient && decoded.exp) {
+    if (decoded.exp) {
       const expireTime = decoded.exp - Math.floor(Date.now() / 1000);
       if (expireTime > 0) {
-        await redisClient.set(`bl_${token}`, "blocked", "EX", expireTime);
+        await cacheService.set(CACHE_KEYS.blockedToken(token), true, expireTime);
       }
     }
   } catch (error) {

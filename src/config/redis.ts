@@ -1,5 +1,6 @@
 import { Redis, type RedisOptions } from 'ioredis';
 import { config } from './env.js';
+import { ServiceUnavailableError } from '../lib/apiError.js';
 
 const redisOptions: RedisOptions | null = config.REDIS_HOST
   ? {
@@ -15,11 +16,21 @@ export const redisClient = config.REDIS_URL
     ? new Redis(redisOptions)
     : null;
 
-export const redis =
-  redisClient ??
-  (() => {
-    throw new Error("Redis is not configured. Set REDIS_URL or REDIS_HOST.");
-  })();
+export const ensureRedis = (): Redis => {
+  if (!redisClient) {
+    throw new ServiceUnavailableError("Redis is not configured. Set REDIS_URL or REDIS_HOST.");
+  }
+
+  return redisClient;
+};
+
+export const redis = new Proxy({} as Redis, {
+  get(_target, prop: keyof Redis) {
+    const client = ensureRedis();
+    const value = client[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 if (redisClient) {
   redisClient.on('connect', () => console.log('connected to redis'));

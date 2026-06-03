@@ -1,7 +1,6 @@
 import userModel, { type UserDocument, type UserFields } from "../models/User.model.js";
 
 type CreateUserInput = Omit<UserFields, "role"> & { verified?: boolean };
-type UpdateUserInput = Partial<UserFields>;
 
 export const userRepository = {
   /**
@@ -19,19 +18,11 @@ export const userRepository = {
   },
 
   /**
-   * Find user by ID
-   */
-  async findById(id: string): Promise<UserDocument | null> {
-    return await userModel.findById(id);
-  },
-
-  /**
    * Find user by reset token
    */
-  async findByResetToken(id: string, token: string): Promise<UserDocument | null> {
+  async findByResetToken(tokenHash: string): Promise<UserDocument | null> {
     return await userModel.findOne({
-      _id: id,
-      resetPasswordToken: token,
+      resetPasswordToken: tokenHash,
       resetPasswordExpire: { $gt: new Date() },
     });
   },
@@ -44,31 +35,10 @@ export const userRepository = {
   },
 
   /**
-   * Update user by ID
-   */
-  async updateById(id: string, updateData: UpdateUserInput): Promise<UserDocument | null> {
-    return await userModel.findByIdAndUpdate(id, updateData, { new: true });
-  },
-
-  /**
    * Update user and save
    */
   async saveUser(user: UserDocument): Promise<UserDocument> {
     return await user.save();
   },
 
-  /**
-   * Delete user by ID
-   */
-  async deleteById(id: string): Promise<UserDocument | null> {
-    return await userModel.findByIdAndDelete(id);
-  },
-
-  /**
-   * Check if user exists by email
-   */
-  async existsByEmail(email: string): Promise<boolean> {
-    const user = await userModel.findOne({ email });
-    return !!user;
-  },
 };

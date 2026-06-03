@@ -6,6 +6,8 @@ import { generationRepository } from "../repositories/generation.repository.js";
 import { projectRepository } from "../repositories/project.repository.js";
 import { logger } from "../lib/logger.js";
 import { CodeValidatorService } from "../services/codeValidator.service.js";
+import { embeddingAnalysisService } from "../services/embeddingAnalysis.service.js";
+import { CACHE_KEYS, cacheService } from "../services/cache.service.js";
  
 
 export interface GenerationJobData {
@@ -16,6 +18,7 @@ export interface GenerationJobData {
   originalPrompt: string;   // used as cache key
   isSectionEdit: boolean;
   sectionId: string | null;
+  sectionHtml: string | null;
   currentCode: string | null; // needed for section replacement
 }
  
@@ -32,19 +35,49 @@ export const CACHE_TTL = {
   job:    3600,  // 1 hour — enough for any SSE reconnect window
   prompt: 3600,  // 1 hour — prompt result cache
 } as const;
+
+export interface PromptCacheScope {
+  userId: string;
+  projectId: string;
+  currentCode?: string | null;
+  sectionHtml?: string | null;
+}
+
+function hashNullable(value?: string | null): string | null {
+  if (!value) return null;
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+export function buildRequestHash(
+  prompt: string,
+  isSectionEdit: boolean,
+  sectionId: string | null | undefined,
+  scope: PromptCacheScope
+): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        userId: scope.userId,
+        projectId: scope.projectId,
+        prompt: prompt.trim(),
+        isSectionEdit,
+        sectionId: sectionId ?? null,
+        currentCodeHash: hashNullable(scope.currentCode),
+        sectionHtmlHash: hashNullable(scope.sectionHtml),
+      })
+    )
+    .digest("hex");
+}
  
 export function buildPromptCacheKey(
   prompt: string,
   isSectionEdit: boolean,
-  sectionId?: string | null
+  sectionId: string | null | undefined,
+  scope: PromptCacheScope
 ): string {
-  const raw = JSON.stringify({
-    prompt: prompt.trim().toLowerCase(),
-    isSectionEdit,
-    sectionId: sectionId ?? null,
-  });
   return REDIS_KEYS.promptCache(
-    crypto.createHash("sha256").update(raw).digest("hex")
+    buildRequestHash(prompt.toLowerCase(), isSectionEdit, sectionId, scope)
   );
 }
  
@@ -126,9 +159,17 @@ function applySectionEdit(
  
 
 // p-queue configuration
-
+const configuredConcurrency = Number.parseInt(
+  process.env.QUEUE_CONCURRENCY ?? "5",
+  10
+);
+const queueConcurrency = Math.min(
+  5,
+  Math.max(1, Number.isFinite(configuredConcurrency) ? configuredConcurrency : 5)
+);
+ 
 export const generationQueue = new PQueue({
-  concurrency: parseInt(process.env.QUEUE_CONCURRENCY ?? "5", 10),
+  concurrency: queueConcurrency,
   timeout: 120_000,    // 2 min max per job — Claude's worst case
 });
  
@@ -160,8 +201,8 @@ export function getQueueHealth(): {
   running: number;
   isHealthy: boolean;
 } {
-  const pending = generationQueue.pending;
-  const running = generationQueue.size - pending;
+  const pending = generationQueue.size;
+  const running = generationQueue.pending;
   return {
     pending,
     running,
@@ -185,6 +226,7 @@ export async function processGenerationJob(
     originalPrompt,
     isSectionEdit,
     sectionId,
+    sectionHtml,
     currentCode,
   } = job;
  
@@ -201,37 +243,46 @@ export async function processGenerationJob(
   let tokenCount = 0;
  
   try {
-    // ── Stream from Claude ──────────────────────
+    // ── Generate from LLM; publish only after validation succeeds. ──
     const streamGen = llmService.stream(augmentedPrompt);
     let iterResult: IteratorResult<string, { fullOutput: string; tokenCount: number; durationMs: number }>;
  
     while (!(iterResult = await streamGen.next()).done) {
       const token = iterResult.value as string;
       fullOutput += token;
- 
-      // Publish token to all active SSE subscribers
-      // Buffer it for late-joining clients (reconnects)
-      await Promise.all([
-        redis.publish(channel, token),
-        redis.rpush(REDIS_KEYS.jobBuffer(generationId), token),
-      ]);
     }
  
     // Extract metadata from generator return value
     const result = iterResult.value as { fullOutput: string; tokenCount: number; durationMs: number };
     tokenCount = result.tokenCount;
  
-    // ── Validate + sanitize output ──────────────
-    const isValid = validator.isValid(fullOutput);
-    if (!isValid) {
+    // ── Sanitize + validate + semantic pattern analysis ──────────────
+    const validationOptions = { allowFragment: isSectionEdit };
+    const safeOutput = validator.sanitize(fullOutput, validationOptions);
+    const analysis = await embeddingAnalysisService.analyze(safeOutput);
+    const blockingPatternIssues = analysis.issues.filter(
+      (issue) => issue.severity === "error"
+    );
+    const validation = validator.validate(safeOutput, validationOptions);
+
+    if (blockingPatternIssues.length > 0 || !validation.valid) {
       logger.warn("generation.output_invalid", {
         generationId,
         outputLength: fullOutput.length,
+        validationErrors: validation.errors,
+        patternIssues: blockingPatternIssues,
+      });
+      throw new Error("Generated output failed safety validation.");
+    }
+
+    if (validation.warnings.length > 0 || analysis.issues.length > 0) {
+      logger.warn("generation.output_warnings", {
+        generationId,
+        validationWarnings: validation.warnings,
+        patternIssues: analysis.issues,
+        embeddingAnalysisEnabled: analysis.enabled,
       });
     }
-    const safeOutput = isValid
-      ? fullOutput
-      : validator.sanitize(fullOutput);
  
     // ── For section edits: replace section in full page code ──
     let finalCode: string;
@@ -255,10 +306,20 @@ export async function processGenerationJob(
  
       // Update project's current code
       projectRepository.updateCode(projectId, userId, finalCode),
+
+      cacheService.del(
+        CACHE_KEYS.projectList(userId),
+        CACHE_KEYS.projectDetail(userId, projectId)
+      ),
  
       // Cache the result (keyed on original prompt, not augmented)
       redis.set(
-        buildPromptCacheKey(originalPrompt, isSectionEdit, sectionId),
+        buildPromptCacheKey(originalPrompt, isSectionEdit, sectionId, {
+          userId,
+          projectId,
+          currentCode,
+          sectionHtml,
+        }),
         finalCode,
         "EX",
         CACHE_TTL.prompt
@@ -276,6 +337,13 @@ export async function processGenerationJob(
       redis.expire(REDIS_KEYS.jobBuffer(generationId), CACHE_TTL.job),
     ]);
  
+    // Publish only validated HTML to active and reconnecting SSE clients.
+    await Promise.all([
+      redis.publish(channel, finalCode),
+      redis.rpush(REDIS_KEYS.jobBuffer(generationId), finalCode),
+      redis.expire(REDIS_KEYS.jobBuffer(generationId), CACHE_TTL.job),
+    ]);
+
     // Signal SSE subscribers that stream is complete
     await redis.publish(channel, "__DONE__");
  
@@ -286,7 +354,7 @@ export async function processGenerationJob(
       tokenCount,
       outputLength: finalCode.length,
       isSectionEdit,
-      wasInvalidOutput: !isValid,
+      embeddingAnalysisEnabled: analysis.enabled,
     });
   } catch (err: unknown) {
     const durationMs = Date.now() - startTime;
@@ -330,16 +398,11 @@ export async function processGenerationJob(
 }
  
 /**
- * Add a job to the queue with priority.
- * Pro users (priority 10) run before free users (priority 1).
- * Returns immediately — actual processing is async.
+ * Add a job to the FIFO queue.
+ * Returns immediately; actual processing is async.
  */
 export async function enqueueGeneration(
-  job: GenerationJobData,
-  priority: number = 1
+  job: GenerationJobData
 ): Promise<void> {
-  generationQueue.add(
-    () => processGenerationJob(job),
-    { priority }
-  );
+  void generationQueue.add(() => processGenerationJob(job));
 }

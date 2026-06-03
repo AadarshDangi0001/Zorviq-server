@@ -33,7 +33,10 @@ export const validateEmail = [
 export const validateResetPassword = [
   body("token").notEmpty().withMessage("Reset token is required"),
   body("newPassword")
-    .isLength({ min: 6 })
+    .custom((value, { req }) => {
+      const password = value ?? req.body.password;
+      return typeof password === "string" && password.length >= 6;
+    })
     .withMessage("New password must be at least 6 characters long"),
   handleValidationErrors,
 ];

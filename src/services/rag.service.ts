@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js';
+import { config } from '../config/env.js';
 import { embeddingAnalysisService } from './embeddingAnalysis.service.js';
 
 interface PineconeHit {
@@ -18,16 +19,16 @@ interface PineconeSearchResponse {
 }
 
 export class RagService {
-  private readonly pineconeApiKey = process.env.PINECONE_API_KEY ?? '';
-  private readonly pineconeHost = process.env.PINECONE_INDEX_HOST ?? '';
-  private readonly pineconeNamespace = process.env.PINECONE_COMPONENT_NAMESPACE ?? 'components';
-  private readonly pineconeApiVersion = process.env.PINECONE_API_VERSION ?? '2026-04';
-  private readonly minScore = Number(process.env.PINECONE_COMPONENT_THRESHOLD ?? '0.72');
+  private readonly pineconeApiKey = config.PINECONE_API_KEY;
+  private readonly pineconeHost = config.PINECONE_INDEX_HOST;
+  private readonly pineconeNamespace = config.PINECONE_COMPONENT_NAMESPACE;
+  private readonly pineconeApiVersion = config.PINECONE_API_VERSION;
+  private readonly minScore = config.PINECONE_COMPONENT_THRESHOLD;
 
   async retrieveComponents(prompt: string): Promise<string[]> {
-    if (!this.pineconeApiKey || !this.pineconeHost || !process.env.GEMINI_API_KEY) {
+    if (!this.pineconeApiKey || !this.pineconeHost || !config.GEMINI_API_KEY) {
       logger.info('rag.disabled', {
-        hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+        hasGeminiKey: Boolean(config.GEMINI_API_KEY),
         hasPineconeKey: Boolean(this.pineconeApiKey),
         hasPineconeHost: Boolean(this.pineconeHost),
       });

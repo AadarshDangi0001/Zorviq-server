@@ -44,8 +44,10 @@ Recommended for full production behavior:
 - `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_INFERENCE_PROFILE_ID`: Bedrock
   generation configuration
 - AWS credentials through the standard AWS SDK provider chain
-- `GEMINI_API_KEY`: embeddings for RAG and generated-code pattern analysis
-- `PINECONE_API_KEY`, `PINECONE_INDEX_HOST`: RAG and pattern-analysis search
+- `GEMINI_API_KEY`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_EMBEDDING_DIMENSIONS`:
+  embeddings for RAG and generated-code pattern analysis
+- `PINECONE_API_KEY`, `PINECONE_INDEX_HOST`, `PINECONE_COMPONENT_NAMESPACE`,
+  `PINECONE_NAMESPACE`: RAG and pattern-analysis vector search
 
 For local tests, email delivery is skipped with `SMTP_SKIP_EMAIL=true`.
 

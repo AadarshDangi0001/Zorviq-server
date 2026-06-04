@@ -11,6 +11,7 @@ import authRouter from './routes/auth.routes.js';
 import { projectRouter } from './routes/project.routes.js';
 import { generateRouter } from './routes/generate.routes.js';
 import { exportRouter } from './routes/export.routes.js';
+import githubRouter from './routes/github.routes.js';
 
 const allowedFrontendOrigins = new Set(
   config.FRONTEND_ORIGINS.split(',')
@@ -69,6 +70,7 @@ export function createApp() {
   app.use('/api/projects', projectRouter);
   app.use('/api/generate', generateRouter);
   app.use('/api/export', exportRouter);
+  app.use('/api/github', githubRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' });

@@ -36,6 +36,8 @@ Recommended for full production behavior:
 - `REDIS_URL` or `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`: Redis connection
 - `RESEND_API_KEY`: transactional email provider key
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`: Google OAuth
+- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL`: GitHub OAuth
+  for repository deploy (create repo and push generated project files)
 - `LOCAL_FRONTEND_URL`: local frontend URL used in development links
 - `FRONTEND_URL`: production frontend URL
 - `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_INFERENCE_PROFILE_ID`: Bedrock

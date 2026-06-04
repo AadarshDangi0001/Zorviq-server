@@ -44,8 +44,7 @@ const sendTokenResponse = (
   res.status(200).json({
     message,
     success: true,
-    token,
-    user,
+    data: { token, user },
   });
 };
 
@@ -60,7 +59,7 @@ export const register = asyncHandler(async (req, res) => {
   const { email, contact, password, fullname } = req.body;
   const backendUrl = getBackendUrl(req);
 
-  const { message } = await authService.registerUser(
+  const { user, message } = await authService.registerUser(
     email,
     password,
     fullname,
@@ -71,6 +70,7 @@ export const register = asyncHandler(async (req, res) => {
   res.status(201).json({
     message,
     success: true,
+    data: { user },
   });
 });
 
@@ -111,7 +111,7 @@ export const getMe = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     success: true,
-    user: userData,
+    data: { user: userData },
   });
 });
 
@@ -126,7 +126,10 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   await authService.sendPasswordResetEmail(email, frontendUrl);
 
-  res.json({ message: "Password reset link sent", success: true });
+  res.json({
+    message: "If an account exists for this email, a password reset link has been sent.",
+    success: true,
+  });
 });
 
 /**
@@ -135,7 +138,8 @@ export const forgotPassword = asyncHandler(async (req, res) => {
  * @access  Public
  */
 export const resetPassword = asyncHandler(async (req, res) => {
-  const { token, newPassword } = req.body;
+  const { token } = req.body;
+  const newPassword = req.body.newPassword ?? req.body.password;
 
   await authService.resetUserPassword(token, newPassword);
 

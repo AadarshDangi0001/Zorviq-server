@@ -1,4 +1,3 @@
-
 import { Request, Response, NextFunction } from "express";
 import { redis } from "../config/redis.js";
 import { generationService } from "../services/generation.service.js";
@@ -6,25 +5,22 @@ import { generationRepository } from "../repositories/generation.repository.js";
 import { REDIS_KEYS } from "../queue/generation.queue.js";
 import { logger } from "../lib/logger.js";
 import { NotFoundError, ValidationError } from "../lib/apiError.js";
-import type { UserDocument } from "../models/User.model.js";
+import { config } from "../config/env.js";
+import { getAuthenticatedUserId } from "../utils/requestUser.js";
 
-type UserContext = {
-  userId: string;
-  plan: "free" | "pro";
-};
+const getSseOrigin = (req: Request): string => {
+  const allowedOrigins = config.FRONTEND_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const requestOrigin = req.headers.origin;
 
-const getUserContext = (req: Request): UserContext => {
-  const user = req.user as UserDocument | undefined;
-  if (!user?._id) {
-    throw new ValidationError("Unauthorized user.");
+  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin;
   }
 
-  return {
-    userId: String(user._id),
-    plan: "free",
-  };
+  return config.FRONTEND_URL || allowedOrigins[0] || config.LOCAL_FRONTEND_URL;
 };
- 
+
 
 export async function enqueueGeneration(
   req: Request,
@@ -32,8 +28,8 @@ export async function enqueueGeneration(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { userId, plan } = getUserContext(req);
- 
+    const userId = getAuthenticatedUserId(req);
+
     const {
       projectId,
       prompt,
@@ -41,7 +37,7 @@ export async function enqueueGeneration(
       sectionId = null,
       sectionHtml = null,
     } = req.body;
- 
+
     // Basic presence validation (zod schema on route does deep validation)
     if (!projectId || typeof projectId !== "string") {
       throw new ValidationError("projectId is required.");
@@ -49,18 +45,17 @@ export async function enqueueGeneration(
     if (!prompt || typeof prompt !== "string") {
       throw new ValidationError("prompt is required.");
     }
- 
+
     const result = await generationService.enqueue(
       userId,
       projectId,
       prompt,
-      plan,
       { isSectionEdit, sectionId, sectionHtml }
     );
- 
+
     // 202 Accepted — job is queued (or 200 if cached)
     const statusCode = result.cached ? 200 : 202;
- 
+
     res.status(statusCode).json({
       success: true,
       data: result,
@@ -69,7 +64,7 @@ export async function enqueueGeneration(
     next(err);
   }
 }
- 
+
 
 export async function streamGeneration(
   req: Request,
@@ -77,8 +72,8 @@ export async function streamGeneration(
   next: NextFunction
 ): Promise<void> {
   const { jobId } = req.params;
-  const { userId } = getUserContext(req);
- 
+  const userId = getAuthenticatedUserId(req);
+
   // Validate the job belongs to this user before opening SSE
   const gen = await generationRepository.findById(jobId, userId).catch(
     () => null
@@ -87,45 +82,45 @@ export async function streamGeneration(
     next(new NotFoundError("Generation not found."));
     return;
   }
- 
+
   // ── SSE setup ────────────────────────────────
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-store");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no"); // disable nginx/proxy buffering
-  res.setHeader("Access-Control-Allow-Origin", process.env.CLIENT_ORIGIN!);
+  res.setHeader("Access-Control-Allow-Origin", getSseOrigin(req));
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.flushHeaders(); // send headers immediately — opens SSE connection
- 
+
   // Helper: send a typed SSE message
   const send = (type: string, payload?: Record<string, unknown>): void => {
     const data = JSON.stringify({ type, ...(payload ?? {}) });
     res.write(`data: ${data}\n\n`);
   };
- 
+
   // Helper: close cleanly
   const close = (): void => {
     res.end();
   };
- 
+
   logger.info("sse.connected", { jobId, userId });
- 
+
   // ── 1. Check if job already done (client reconnect case) ────────────
   const currentStatus = await redis.get(REDIS_KEYS.jobStatus(jobId));
- 
+
   if (currentStatus === "done") {
-    const output = await generationRepository.getOutput(jobId);
+    const output = await generationRepository.getOutput(jobId, userId);
     send("done", { code: output });
     close();
     return;
   }
- 
+
   if (currentStatus === "failed") {
     send("error", { message: "Generation failed. Please try again." });
     close();
     return;
   }
- 
+
   // ── 2. Replay buffered tokens for late-joining clients ───────────────
   // (client may connect after worker already started streaming)
   try {
@@ -143,13 +138,13 @@ export async function streamGeneration(
     logger.warn("sse.buffer_replay_failed", { jobId, error: bufferErr });
     // Non-fatal — continue with live stream
   }
- 
+
   // ── 3. Subscribe to Redis Pub/Sub for live tokens ────────────────────
   // IMPORTANT: must use a dedicated Redis connection for subscribe mode
   const subscriber = redis.duplicate();
- 
+
   await subscriber.subscribe(REDIS_KEYS.jobChannel(jobId));
- 
+
   subscriber.on("message", (_channel: string, message: string) => {
     if (message === "__DONE__") {
       send("done");
@@ -157,18 +152,18 @@ export async function streamGeneration(
       close();
       return;
     }
- 
+
     if (message === "__ERROR__") {
       send("error", { message: "Generation failed. Please try again." });
       cleanup();
       close();
       return;
     }
- 
+
     // Live token — forward directly
     send("token", { data: message });
   });
- 
+
   // ── 4. Heartbeat — keep connection alive through proxies ─────────────
   // SSE comment lines (": ping") are ignored by EventSource but prevent timeout
   const heartbeat = setInterval(() => {
@@ -176,25 +171,25 @@ export async function streamGeneration(
       res.write(": ping\n\n");
     }
   }, 25_000);
- 
+
   // ── 5. Cleanup on client disconnect ─────────────────────────────────
   const cleanup = (): void => {
     clearInterval(heartbeat);
-    subscriber.unsubscribe().catch(() => {});
-    subscriber.quit().catch(() => {});
+    subscriber.unsubscribe().catch(() => { });
+    subscriber.quit().catch(() => { });
     logger.info("sse.disconnected", { jobId, userId });
   };
- 
+
   req.on("close", () => {
     cleanup();
     // Don't call close() — connection is already closed by client
   });
- 
+
   req.on("error", () => {
     cleanup();
   });
 }
- 
+
 // ─────────────────────────────────────────────
 // GET /api/generate/:jobId/status
 // Polling fallback for environments where SSE is unreliable
@@ -205,17 +200,17 @@ export async function getGenerationStatus(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { userId } = getUserContext(req);
+    const userId = getAuthenticatedUserId(req);
     const { jobId } = req.params;
- 
+
     const result = await generationService.getStatus(jobId, userId);
- 
+
     res.json({ success: true, data: result });
   } catch (err) {
     next(err);
   }
 }
- 
+
 // ─────────────────────────────────────────────
 // GET /api/generate/history/:projectId
 // ─────────────────────────────────────────────
@@ -225,19 +220,19 @@ export async function getGenerationHistory(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { userId } = getUserContext(req);
+    const userId = getAuthenticatedUserId(req);
     const { projectId } = req.params;
-    const limit = Math.min(
-      parseInt(req.query.limit as string ?? "10", 10),
-      20 // hard cap
-    );
- 
+    const requestedLimit = parseInt(req.query.limit as string ?? "10", 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 20)
+      : 10;
+
     const history = await generationService.getHistory(
       projectId,
       userId,
       limit
     );
- 
+
     res.json({ success: true, data: history });
   } catch (err) {
     next(err);

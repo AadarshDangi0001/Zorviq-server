@@ -1,5 +1,5 @@
 import { redis } from "../config/redis.js";
-import { RateLimitError } from "../lib/apiError.js"; // re-import from same file in real project
+import { RateLimitError } from "../lib/apiError.js";
  
 export class RateLimiterService {
   constructor(
@@ -25,21 +25,6 @@ export class RateLimiterService {
     }
   }
  
-  async getRemainingRequests(userId: string): Promise<{
-    remaining: number;
-    resetInSeconds: number;
-  }> {
-    const key = `rl:${userId}`;
-    const [count, ttl] = await Promise.all([
-      redis.get(key),
-      redis.ttl(key),
-    ]);
-    const used = parseInt(count ?? "0", 10);
-    return {
-      remaining: Math.max(0, this.limit - used),
-      resetInSeconds: ttl > 0 ? ttl : 0,
-    };
-  }
 }
  
 export const rateLimiterService = new RateLimiterService();

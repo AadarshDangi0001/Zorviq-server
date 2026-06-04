@@ -1,14 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { ValidationError } from "../lib/apiError.js";
 import { projectService } from "../services/project.service.js";
-
-function getUserId(req: Request): string {
-  const user = req.user as { _id?: unknown } | undefined;
-  if (!user?._id) {
-    throw new ValidationError("Unauthorized user.");
-  }
-  return String(user._id);
-}
+import { getAuthenticatedUserId } from "../utils/requestUser.js";
 
 export async function listProjects(
   req: Request,
@@ -16,7 +8,7 @@ export async function listProjects(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = getUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const projects = await projectService.listProjects(userId);
 
     res.json({ success: true, data: projects });
@@ -31,7 +23,7 @@ export async function createProject(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = getUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { name, currentCode = null } = req.body;
 
     const project = await projectService.createProject(
@@ -52,7 +44,7 @@ export async function getProject(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = getUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { id } = req.params;
     const project = await projectService.getProjectById(id, userId);
 
@@ -68,7 +60,7 @@ export async function updateProject(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = getUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { id } = req.params;
     const { name, currentCode } = req.body;
 
@@ -89,7 +81,7 @@ export async function deleteProject(
   next: NextFunction
 ): Promise<void> {
   try {
-    const userId = getUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { id } = req.params;
 
     await projectService.deleteProject(id, userId);

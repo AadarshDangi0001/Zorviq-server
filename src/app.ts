@@ -10,6 +10,7 @@ import { errorHandler } from './middleware/error.middleware.js';
 import authRouter from './routes/auth.routes.js';
 import { projectRouter } from './routes/project.routes.js';
 import { generateRouter } from './routes/generate.routes.js';
+import { exportRouter } from './routes/export.routes.js';
 
 const allowedFrontendOrigins = new Set(
   config.FRONTEND_ORIGINS.split(',')
@@ -33,7 +34,9 @@ export function createApp() {
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   }));
-  app.use(morgan('dev'));
+  if (config.NODE_ENV !== 'production') {
+    app.use(morgan('dev'));
+  }
   app.use(cookieParser());
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -63,6 +66,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/projects', projectRouter);
   app.use('/api/generate', generateRouter);
+  app.use('/api/export', exportRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not found' });

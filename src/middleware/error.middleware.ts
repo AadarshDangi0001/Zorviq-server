@@ -12,6 +12,8 @@ export const errorHandler = (
   if (error instanceof ApiError) {
     return res.status(error.statusCode).json({
       success: false,
+      statusCode: error.statusCode,
+      message: error.message,
       error: {
         code: error.code,
         message: error.message,
@@ -22,6 +24,8 @@ export const errorHandler = (
 
   return res.status(500).json({
     success: false,
+    statusCode: 500,
+    message: "Internal server error",
     error: {
       code: "INTERNAL_SERVER_ERROR",
       message: "Internal server error",

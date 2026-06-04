@@ -39,13 +39,6 @@ export class NotFoundError extends ApiError {
   }
 }
 
-export class ConflictError extends ApiError {
-  constructor(message: string) {
-    super(409, "CONFLICT", message);
-    this.name = "ConflictError";
-  }
-}
-
 export class RateLimitError extends ApiError {
   constructor(message: string, public readonly retryAfter?: number) {
     super(

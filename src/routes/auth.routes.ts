@@ -117,7 +117,6 @@ authRouter.get("/get-me", authenticateUser, getMe);
  * @description Logout the authenticated user
  * @access Private
  */
-authRouter.get("/logout", authenticateUser, logoutUser);
 authRouter.post("/logout", authenticateUser, logoutUser);
 
 export default authRouter;

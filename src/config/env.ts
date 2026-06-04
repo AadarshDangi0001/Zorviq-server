@@ -1,9 +1,6 @@
 import dotenv from 'dotenv';
 
-const result = dotenv.config();
-if (result.error) {
-  throw new Error('Unable to load .env file. Create a .env or .env.local file from .env.example.');
-}
+dotenv.config();
 
 const requiredVars = ['MONGO_URI', 'JWT_SECRET', 'FRONTEND_ORIGINS'];
 for (const name of requiredVars) {
@@ -66,7 +63,3 @@ export const isGoogleAuthConfigured = Boolean(
     config.GOOGLE_CLIENT_SECRET &&
     config.GOOGLE_CALLBACK_URL
 );
-// export const SENTRY_DSN = process.env.SENTRY_DSN ?? '';
-// export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
-// export const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60000);
-// export const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX ?? 100);

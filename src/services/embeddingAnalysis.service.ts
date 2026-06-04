@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js';
+import { config } from '../config/env.js';
 
 export interface EmbeddingAnalysisIssue {
   severity: 'error' | 'warning';
@@ -65,13 +66,14 @@ const LOCAL_PATTERN_ISSUES: Array<{
 ];
 
 export class EmbeddingAnalysisService {
-  private readonly geminiApiKey = process.env.GEMINI_API_KEY ?? '';
-  private readonly geminiModel = process.env.GEMINI_EMBEDDING_MODEL ?? 'gemini-embedding-2';
-  private readonly pineconeApiKey = process.env.PINECONE_API_KEY ?? '';
-  private readonly pineconeHost = process.env.PINECONE_INDEX_HOST ?? '';
-  private readonly pineconeNamespace = process.env.PINECONE_NAMESPACE ?? 'code-pattern-errors';
-  private readonly pineconeApiVersion = process.env.PINECONE_API_VERSION ?? '2026-04';
-  private readonly similarityThreshold = Number(process.env.PINECONE_PATTERN_THRESHOLD ?? '0.78');
+  private readonly geminiApiKey = config.GEMINI_API_KEY;
+  private readonly geminiModel = config.GEMINI_EMBEDDING_MODEL;
+  private readonly geminiDimensions = config.GEMINI_EMBEDDING_DIMENSIONS;
+  private readonly pineconeApiKey = config.PINECONE_API_KEY;
+  private readonly pineconeHost = config.PINECONE_INDEX_HOST;
+  private readonly pineconeNamespace = config.PINECONE_NAMESPACE;
+  private readonly pineconeApiVersion = config.PINECONE_API_VERSION;
+  private readonly similarityThreshold = config.PINECONE_PATTERN_THRESHOLD;
 
   async analyze(code: string): Promise<EmbeddingAnalysisResult> {
     const issues = this.detectLocalPatternIssues(code);
@@ -125,6 +127,7 @@ export class EmbeddingAnalysisService {
       },
       body: JSON.stringify({
         model: `models/${this.geminiModel}`,
+        output_dimensionality: this.geminiDimensions,
         content: {
           parts: [
             {

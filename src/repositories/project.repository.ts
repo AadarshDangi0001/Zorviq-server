@@ -1,5 +1,5 @@
-import { Types } from "mongoose";
-import { Project, type IProject } from "../models/Project.model.js";
+import { Types } from 'mongoose';
+import { Project, type IProject } from '../models/Project.model.js';
 
 export class ProjectRepository {
   async findAllByUser(userId: string): Promise<IProject[]> {
@@ -10,11 +10,7 @@ export class ProjectRepository {
       .exec();
   }
 
-  async create(
-    userId: string,
-    name: string,
-    currentCode: string | null = null
-  ): Promise<IProject> {
+  async create(userId: string, name: string, currentCode: string | null = null): Promise<IProject> {
     return Project.create({
       userId: new Types.ObjectId(userId),
       name,
@@ -32,7 +28,7 @@ export class ProjectRepository {
   async update(
     projectId: string,
     userId: string,
-    data: Partial<Pick<IProject, "name" | "currentCode">>
+    data: Partial<Pick<IProject, 'name' | 'currentCode'>>
   ): Promise<IProject | null> {
     return Project.findOneAndUpdate(
       {
@@ -41,7 +37,7 @@ export class ProjectRepository {
       },
       { $set: data },
       {
-        returnDocument: "after",
+        returnDocument: 'after',
       }
     ).exec();
   }

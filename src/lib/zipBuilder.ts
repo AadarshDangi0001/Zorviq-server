@@ -1,4 +1,4 @@
-import JSZip from "jszip";
+import JSZip from 'jszip';
 
 type BuildProjectZipInput = {
   projectName: string;
@@ -9,21 +9,24 @@ const toSafeFileName = (name: string): string => {
   const normalized = name
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
-  return normalized || "zorviq-project";
+  return normalized || 'zorviq-project';
 };
 
 const escapeHtml = (value: string): string =>
   value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
-const buildIndexHtml = ({ projectName, currentCode }: BuildProjectZipInput): string => `<!doctype html>
+const buildIndexHtml = ({
+  projectName,
+  currentCode,
+}: BuildProjectZipInput): string => `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -51,11 +54,11 @@ export async function buildProjectZip(input: BuildProjectZipInput): Promise<{
   fileName: string;
 }> {
   const zip = new JSZip();
-  zip.file("index.html", buildIndexHtml(input));
-  zip.file("README.md", buildReadme(input));
+  zip.file('index.html', buildIndexHtml(input));
+  zip.file('README.md', buildReadme(input));
 
   return {
-    buffer: await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
+    buffer: await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }),
     fileName: `${toSafeFileName(input.projectName)}.zip`,
   };
 }

@@ -1,11 +1,8 @@
-import { z } from "zod";
-import { objectIdString, validate } from "./zod.validator.js";
+import { z } from 'zod';
+import { objectIdString, validate } from './zod.validator.js';
 
 const projectIdParamSchema = z.object({
-  projectId: objectIdString("Invalid projectId format"),
+  projectId: objectIdString('Invalid projectId format'),
 });
 
-export const validateExportProjectIdParam = validate(
-  projectIdParamSchema,
-  "params"
-);
+export const validateExportProjectIdParam = validate(projectIdParamSchema, 'params');

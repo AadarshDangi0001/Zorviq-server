@@ -1,15 +1,15 @@
-import { Request, Response, NextFunction } from "express";
-import { redis } from "../config/redis.js";
-import { generationService } from "../services/generation.service.js";
-import { generationRepository } from "../repositories/generation.repository.js";
-import { REDIS_KEYS } from "../queue/generation.queue.js";
-import { logger } from "../lib/logger.js";
-import { NotFoundError, ValidationError } from "../lib/apiError.js";
-import { config } from "../config/env.js";
-import { getAuthenticatedUserId } from "../utils/requestUser.js";
+import type { Request, Response, NextFunction } from 'express';
+import { redis } from '../config/redis.js';
+import { generationService } from '../services/generation.service.js';
+import { generationRepository } from '../repositories/generation.repository.js';
+import { REDIS_KEYS } from '../queue/generation.queue.js';
+import { logger } from '../lib/logger.js';
+import { NotFoundError, ValidationError } from '../lib/apiError.js';
+import { config } from '../config/env.js';
+import { getAuthenticatedUserId } from '../utils/requestUser.js';
 
 const getSseOrigin = (req: Request): string => {
-  const allowedOrigins = config.FRONTEND_ORIGINS.split(",")
+  const allowedOrigins = config.FRONTEND_ORIGINS.split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
   const requestOrigin = req.headers.origin;
@@ -20,7 +20,6 @@ const getSseOrigin = (req: Request): string => {
 
   return config.FRONTEND_URL || allowedOrigins[0] || config.LOCAL_FRONTEND_URL;
 };
-
 
 export async function enqueueGeneration(
   req: Request,
@@ -39,19 +38,18 @@ export async function enqueueGeneration(
     } = req.body;
 
     // Basic presence validation (zod schema on route does deep validation)
-    if (!projectId || typeof projectId !== "string") {
-      throw new ValidationError("projectId is required.");
+    if (!projectId || typeof projectId !== 'string') {
+      throw new ValidationError('projectId is required.');
     }
-    if (!prompt || typeof prompt !== "string") {
-      throw new ValidationError("prompt is required.");
+    if (!prompt || typeof prompt !== 'string') {
+      throw new ValidationError('prompt is required.');
     }
 
-    const result = await generationService.enqueue(
-      userId,
-      projectId,
-      prompt,
-      { isSectionEdit, sectionId, sectionHtml }
-    );
+    const result = await generationService.enqueue(userId, projectId, prompt, {
+      isSectionEdit,
+      sectionId,
+      sectionHtml,
+    });
 
     // 202 Accepted — job is queued (or 200 if cached)
     const statusCode = result.cached ? 200 : 202;
@@ -65,7 +63,6 @@ export async function enqueueGeneration(
   }
 }
 
-
 export async function streamGeneration(
   req: Request,
   res: Response,
@@ -75,21 +72,19 @@ export async function streamGeneration(
   const userId = getAuthenticatedUserId(req);
 
   // Validate the job belongs to this user before opening SSE
-  const gen = await generationRepository.findById(jobId, userId).catch(
-    () => null
-  );
+  const gen = await generationRepository.findById(jobId, userId).catch(() => null);
   if (!gen) {
-    next(new NotFoundError("Generation not found."));
+    next(new NotFoundError('Generation not found.'));
     return;
   }
 
   // ── SSE setup ────────────────────────────────
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache, no-store");
-  res.setHeader("Connection", "keep-alive");
-  res.setHeader("X-Accel-Buffering", "no"); // disable nginx/proxy buffering
-  res.setHeader("Access-Control-Allow-Origin", getSseOrigin(req));
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-store');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // disable nginx/proxy buffering
+  res.setHeader('Access-Control-Allow-Origin', getSseOrigin(req));
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.flushHeaders(); // send headers immediately — opens SSE connection
 
   // Helper: send a typed SSE message
@@ -103,89 +98,89 @@ export async function streamGeneration(
     res.end();
   };
 
-  logger.info("sse.connected", { jobId, userId });
+  logger.info('sse.connected', { jobId, userId });
 
   // ── 1. Check if job already done (client reconnect case) ────────────
   const currentStatus = await redis.get(REDIS_KEYS.jobStatus(jobId));
 
-  if (currentStatus === "done") {
+  if (currentStatus === 'done') {
     const output = await generationRepository.getOutput(jobId, userId);
-    send("done", { code: output });
+    send('done', { code: output });
     close();
     return;
   }
 
-  if (currentStatus === "failed") {
-    send("error", { message: "Generation failed. Please try again." });
+  if (currentStatus === 'failed') {
+    send('error', { message: 'Generation failed. Please try again.' });
     close();
     return;
   }
 
-  // ── 2. Replay buffered tokens for late-joining clients ───────────────
-  // (client may connect after worker already started streaming)
+  // ── 2. Replay buffered output for late-joining clients ───────────────
+  // (client may connect after the worker already published the validated result)
   try {
     const buffered = await redis.lrange(REDIS_KEYS.jobBuffer(jobId), 0, -1);
     if (buffered.length > 0) {
-      logger.info("sse.replaying_buffer", {
+      logger.info('sse.replaying_buffer', {
         jobId,
         tokenCount: buffered.length,
       });
       for (const token of buffered) {
-        send("token", { data: token });
+        send('token', { data: token });
       }
     }
   } catch (bufferErr) {
-    logger.warn("sse.buffer_replay_failed", { jobId, error: bufferErr });
+    logger.warn('sse.buffer_replay_failed', { jobId, error: bufferErr });
     // Non-fatal — continue with live stream
   }
 
-  // ── 3. Subscribe to Redis Pub/Sub for live tokens ────────────────────
+  // ── 3. Subscribe to Redis Pub/Sub for generation result events ───────
   // IMPORTANT: must use a dedicated Redis connection for subscribe mode
   const subscriber = redis.duplicate();
 
   await subscriber.subscribe(REDIS_KEYS.jobChannel(jobId));
 
-  subscriber.on("message", (_channel: string, message: string) => {
-    if (message === "__DONE__") {
-      send("done");
+  subscriber.on('message', (_channel: string, message: string) => {
+    if (message === '__DONE__') {
+      send('done');
       cleanup();
       close();
       return;
     }
 
-    if (message === "__ERROR__") {
-      send("error", { message: "Generation failed. Please try again." });
+    if (message === '__ERROR__') {
+      send('error', { message: 'Generation failed. Please try again.' });
       cleanup();
       close();
       return;
     }
 
-    // Live token — forward directly
-    send("token", { data: message });
+    // Generated output payload — forward directly
+    send('token', { data: message });
   });
 
   // ── 4. Heartbeat — keep connection alive through proxies ─────────────
   // SSE comment lines (": ping") are ignored by EventSource but prevent timeout
   const heartbeat = setInterval(() => {
     if (!res.writableEnded) {
-      res.write(": ping\n\n");
+      res.write(': ping\n\n');
     }
   }, 25_000);
 
   // ── 5. Cleanup on client disconnect ─────────────────────────────────
   const cleanup = (): void => {
     clearInterval(heartbeat);
-    subscriber.unsubscribe().catch(() => { });
-    subscriber.quit().catch(() => { });
-    logger.info("sse.disconnected", { jobId, userId });
+    subscriber.unsubscribe().catch(() => {});
+    subscriber.quit().catch(() => {});
+    logger.info('sse.disconnected', { jobId, userId });
   };
 
-  req.on("close", () => {
+  req.on('close', () => {
     cleanup();
     // Don't call close() — connection is already closed by client
   });
 
-  req.on("error", () => {
+  req.on('error', () => {
     cleanup();
   });
 }
@@ -222,16 +217,10 @@ export async function getGenerationHistory(
   try {
     const userId = getAuthenticatedUserId(req);
     const { projectId } = req.params;
-    const requestedLimit = parseInt(req.query.limit as string ?? "10", 10);
-    const limit = Number.isFinite(requestedLimit)
-      ? Math.min(Math.max(requestedLimit, 1), 20)
-      : 10;
+    const requestedLimit = parseInt((req.query.limit as string) ?? '10', 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 20) : 10;
 
-    const history = await generationService.getHistory(
-      projectId,
-      userId,
-      limit
-    );
+    const history = await generationService.getHistory(projectId, userId, limit);
 
     res.json({ success: true, data: history });
   } catch (err) {

@@ -3,9 +3,9 @@
  * Cinematic Noir / Premium Minimalist style
  */
 
-const primaryColor = "#00F5FF"; // Electric blue
-const bgColor = "#080808";
-const cardColor = "#121212";
+const primaryColor = '#00F5FF'; // Electric blue
+const bgColor = '#080808';
+const cardColor = '#121212';
 
 const baseTemplate = (content: string) => `
 <div style="background-color: ${bgColor}; color: #dce4e4; font-family: 'Inter', -apple-system, sans-serif; padding: 40px 20px; line-height: 1.6;">
@@ -23,7 +23,8 @@ const baseTemplate = (content: string) => `
 </div>
 `;
 
-export const getVerificationEmail = (verifyUrl: string) => baseTemplate(`
+export const getVerificationEmail = (verifyUrl: string) =>
+  baseTemplate(`
   <h2 style="color: white; font-size: 20px; margin-bottom: 20px;">Verify your identity</h2>
   <p>Welcome to the circle of high-performance. Click the button below to verify your account and start your journey.</p>
   <div style="text-align: center; margin: 32px 0;">
@@ -33,7 +34,8 @@ export const getVerificationEmail = (verifyUrl: string) => baseTemplate(`
   <p style="font-size: 14px; color: #849495; margin-top: 20px;">This link expires in 1 hour.</p>
 `);
 
-export const getPasswordResetEmail = (resetUrl: string) => baseTemplate(`
+export const getPasswordResetEmail = (resetUrl: string) =>
+  baseTemplate(`
   <h2 style="color: white; font-size: 20px; margin-bottom: 20px;">Reset your password</h2>
   <p>We received a request to reset your password. Click the button below to choose a new one.</p>
   <div style="text-align: center; margin: 32px 0;">

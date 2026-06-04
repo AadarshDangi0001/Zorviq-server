@@ -1,12 +1,8 @@
-import { Request, Response, NextFunction } from "express";
-import { projectService } from "../services/project.service.js";
-import { getAuthenticatedUserId } from "../utils/requestUser.js";
+import type { Request, Response, NextFunction } from 'express';
+import { projectService } from '../services/project.service.js';
+import { getAuthenticatedUserId } from '../utils/requestUser.js';
 
-export async function listProjects(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+export async function listProjects(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = getAuthenticatedUserId(req);
     const projects = await projectService.listProjects(userId);
@@ -26,11 +22,7 @@ export async function createProject(
     const userId = getAuthenticatedUserId(req);
     const { name, currentCode = null } = req.body;
 
-    const project = await projectService.createProject(
-      userId,
-      name,
-      currentCode
-    );
+    const project = await projectService.createProject(userId, name, currentCode);
 
     res.status(201).json({ success: true, data: project });
   } catch (err) {
@@ -38,11 +30,7 @@ export async function createProject(
   }
 }
 
-export async function getProject(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
+export async function getProject(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const userId = getAuthenticatedUserId(req);
     const { id } = req.params;

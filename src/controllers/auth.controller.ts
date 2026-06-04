@@ -1,22 +1,23 @@
-import type { CookieOptions, Request, Response } from "express";
-import { getFrontendUrl, getBackendUrl } from "../config/env.js";
-import asyncHandler from "../utils/asyncHandler.js";
-import type { UserDocument } from "../models/User.model.js";
-import * as authService from "../services/auth.service.js";
+import type { CookieOptions, Request, Response } from 'express';
+import type { Profile as GoogleProfile } from 'passport-google-oauth20';
+import { getFrontendUrl, getBackendUrl } from '../config/env.js';
+import asyncHandler from '../utils/asyncHandler.js';
+import type { UserDocument } from '../models/User.model.js';
+import * as authService from '../services/auth.service.js';
 
 /**
  * Get auth cookie options based on environment
  */
 const getAuthCookieOptions = (req: Request): CookieOptions => {
-  const host = req.headers.host || "";
+  const host = req.headers.host || '';
   const isLocalBackend = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(host);
   const isHttpsRequest =
-    req.secure || req.headers["x-forwarded-proto"] === "https" || !isLocalBackend;
+    req.secure || req.headers['x-forwarded-proto'] === 'https' || !isLocalBackend;
 
   return {
     httpOnly: true,
     secure: isHttpsRequest,
-    sameSite: isHttpsRequest ? "none" : "lax",
+    sameSite: isHttpsRequest ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 };
@@ -39,7 +40,7 @@ const sendTokenResponse = (
   res: Response,
   message: string
 ) => {
-  res.cookie("token", token, getAuthCookieOptions(req));
+  res.cookie('token', token, getAuthCookieOptions(req));
 
   res.status(200).json({
     message,
@@ -80,11 +81,11 @@ export const register = asyncHandler(async (req, res) => {
  * @access  Public
  */
 export const verifyEmail = asyncHandler(async (req, res) => {
-  const token = typeof req.query.token === "string" ? req.query.token : "";
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
 
   await authService.verifyUserEmail(token);
 
-  res.json({ message: "Email verified successfully", success: true });
+  res.json({ message: 'Email verified successfully', success: true });
 });
 
 /**
@@ -97,7 +98,7 @@ export const login = asyncHandler(async (req, res) => {
 
   const { user, token } = await authService.loginUser(email, password);
 
-  sendTokenResponse(user, token, req, res, "Login successful");
+  sendTokenResponse(user, token, req, res, 'Login successful');
 });
 
 /**
@@ -127,7 +128,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   await authService.sendPasswordResetEmail(email, frontendUrl);
 
   res.json({
-    message: "If an account exists for this email, a password reset link has been sent.",
+    message: 'If an account exists for this email, a password reset link has been sent.',
     success: true,
   });
 });
@@ -143,7 +144,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
   await authService.resetUserPassword(token, newPassword);
 
-  res.json({ message: "Password reset successful", success: true });
+  res.json({ message: 'Password reset successful', success: true });
 });
 
 /**
@@ -152,11 +153,11 @@ export const resetPassword = asyncHandler(async (req, res) => {
  * @access  Public
  */
 export const googleCallback = asyncHandler(async (req, res) => {
-  const profile = req.user as any;
+  const profile = req.user as GoogleProfile | undefined;
 
   const { token } = await authService.handleGoogleAuth(profile);
 
-  res.cookie("token", token, getAuthCookieOptions(req));
+  res.cookie('token', token, getAuthCookieOptions(req));
   res.redirect(getFrontendUrl(req));
 });
 
@@ -171,7 +172,7 @@ export const resendVerification = asyncHandler(async (req, res) => {
 
   await authService.resendVerificationEmail(email, backendUrl);
 
-  res.json({ message: "Verification email resent", success: true });
+  res.json({ message: 'Verification email resent', success: true });
 });
 
 /**
@@ -184,6 +185,6 @@ export const logoutUser = asyncHandler(async (req, res) => {
 
   await authService.logoutUser(token);
 
-  res.clearCookie("token", getClearCookieOptions(req));
-  res.status(200).json({ message: "Logged out successfully", success: true });
+  res.clearCookie('token', getClearCookieOptions(req));
+  res.status(200).json({ message: 'Logged out successfully', success: true });
 });

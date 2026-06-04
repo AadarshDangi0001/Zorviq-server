@@ -1,6 +1,6 @@
-import { redis } from "../config/redis.js";
-import { generationRepository } from "../repositories/generation.repository.js";
-import { projectRepository } from "../repositories/project.repository.js";
+import { redis } from '../config/redis.js';
+import { generationRepository } from '../repositories/generation.repository.js';
+import { projectRepository } from '../repositories/project.repository.js';
 import {
   enqueueGeneration,
   buildPromptCacheKey,
@@ -9,19 +9,19 @@ import {
   REDIS_KEYS,
   CACHE_TTL,
   type GenerationJobData,
-} from "../queue/generation.queue.js";
-import { RagService } from "./rag.service.js";
-import { RateLimiterService } from "./rateLimiter.service.js";
-import { CACHE_KEYS, cacheService } from "./cache.service.js";
-import { logger } from "../lib/logger.js";
+} from '../queue/generation.queue.js';
+import { ragService, type RagService } from './rag.service.js';
+import { rateLimiterService, type RateLimiterService } from './rateLimiter.service.js';
+import { CACHE_KEYS, cacheService } from './cache.service.js';
+import { logger } from '../lib/logger.js';
 import {
   NotFoundError,
   RateLimitError,
   ValidationError,
   ServiceUnavailableError,
-} from "../lib/apiError.js";
-import type { IGeneration } from "../models/Generation.model.js";
- 
+} from '../lib/apiError.js';
+import type { IGeneration } from '../models/Generation.model.js';
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -30,34 +30,35 @@ export interface EnqueueOptions {
   sectionId?: string | null;
   sectionHtml?: string | null;
 }
- 
+
 export interface EnqueueResult {
   jobId: string;
-  status: "queued" | "done"; // 'done' when served from cache
+  status: 'queued' | 'done'; // 'done' when served from cache
   cached: boolean;
-  code?: string;              // only present when cached = true
-  queuePosition?: number;     // only when queued
+  code?: string; // only present when cached = true
+  queuePosition?: number; // only when queued
   estimatedWaitSeconds?: number;
 }
- 
+
 // ─────────────────────────────────────────────
 // Generation Service
 // ─────────────────────────────────────────────
 export class GenerationService {
   // Rough estimate: average generation takes ~12 seconds
   private readonly avgGenSeconds = 12;
-  // Max pending jobs before we reject with 503
   // Max concurrent active generations per user
   private readonly maxActivePerUser = 2;
- 
+
   constructor(
     private rag: RagService,
     private rateLimiter: RateLimiterService
   ) {}
- 
+
   /**
-   * Primary method — called by the controller.
-   * Validates → rate limits → cache check → RAG → enqueue → return jobId.
+   * Validates and schedules a generation request for a user-owned project.
+   *
+   * @returns A completed cached response or queued job metadata.
+   * @sideEffects Reads and writes Redis, creates generation records, and may update project code on cache hit.
    */
   async enqueue(
     userId: string,
@@ -66,30 +67,28 @@ export class GenerationService {
     opts: EnqueueOptions = {}
   ): Promise<EnqueueResult> {
     const { isSectionEdit = false, sectionId = null, sectionHtml = null } = opts;
- 
+
     // ── 1. Validate input ───────────────────────────────────────────────
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt || trimmedPrompt.length < 5) {
-      throw new ValidationError("Prompt must be at least 5 characters.");
+      throw new ValidationError('Prompt must be at least 5 characters.');
     }
     if (trimmedPrompt.length > 2000) {
-      throw new ValidationError("Prompt must not exceed 2000 characters.");
+      throw new ValidationError('Prompt must not exceed 2000 characters.');
     }
     if (isSectionEdit && !sectionId) {
-      throw new ValidationError(
-        "sectionId is required for section edit requests."
-      );
+      throw new ValidationError('sectionId is required for section edit requests.');
     }
- 
+
     // ── 2. Verify project belongs to user ───────────────────────────────
     const project = await projectRepository.findOne(projectId, userId);
     if (!project) {
-      throw new NotFoundError("Project not found.");
+      throw new NotFoundError('Project not found.');
     }
- 
+
     // ── 3. Rate limit check ─────────────────────────────────────────────
     await this.rateLimiter.check(userId);
- 
+
     // ── 4. Check per-user active generation limit ───────────────────────
     await generationRepository.failStaleActiveForUser(userId);
     const activeCount = await generationRepository.countActive(userId);
@@ -98,15 +97,13 @@ export class GenerationService {
         `You already have ${activeCount} active generation(s). Please wait for them to complete.`
       );
     }
- 
+
     // ── 5. Queue capacity check ─────────────────────────────────────────
     const queueHealth = getQueueHealth();
     if (!queueHealth.isHealthy) {
-      throw new ServiceUnavailableError(
-        "Server is under high load. Please try again in a moment."
-      );
+      throw new ServiceUnavailableError('Server is under high load. Please try again in a moment.');
     }
- 
+
     // ── 6. Prompt cache check ────────────────────────────────────────────
     const cacheScope = {
       userId,
@@ -114,29 +111,19 @@ export class GenerationService {
       currentCode: project.currentCode ?? null,
       sectionHtml,
     };
-    const requestHash = buildRequestHash(
-      trimmedPrompt,
-      isSectionEdit,
-      sectionId,
-      cacheScope
-    );
-    const cacheKey = buildPromptCacheKey(
-      trimmedPrompt,
-      isSectionEdit,
-      sectionId,
-      cacheScope
-    );
+    const requestHash = buildRequestHash(trimmedPrompt, isSectionEdit, sectionId, cacheScope);
+    const cacheKey = buildPromptCacheKey(trimmedPrompt, isSectionEdit, sectionId, cacheScope);
     const cachedOutput = await redis.get(cacheKey);
- 
+
     if (cachedOutput) {
-      logger.info("generation.cache_hit", {
+      logger.info('generation.cache_hit', {
         userId,
         projectId,
         requestHash,
         cacheKey,
         outputLength: cachedOutput.length,
       });
- 
+
       // Create a generation record (for history) and immediately mark done
       const gen = await generationRepository.create({
         projectId,
@@ -148,10 +135,10 @@ export class GenerationService {
         sectionHtml,
         ragChunksUsed: 0,
       });
- 
+
       await Promise.all([
         generationRepository.updateStatus(gen._id.toString(), {
-          status: "done",
+          status: 'done',
           output: cachedOutput,
           durationMs: 0,
         }),
@@ -161,48 +148,39 @@ export class GenerationService {
           CACHE_KEYS.projectDetail(userId, projectId)
         ),
         // Mark job status in Redis so SSE clients don't hang
-        redis.set(
-          REDIS_KEYS.jobStatus(gen._id.toString()),
-          "done",
-          "EX",
-          CACHE_TTL.job
-        ),
+        redis.set(REDIS_KEYS.jobStatus(gen._id.toString()), 'done', 'EX', CACHE_TTL.job),
       ]);
- 
+
       return {
         jobId: gen._id.toString(),
-        status: "done",
+        status: 'done',
         cached: true,
         code: cachedOutput,
       };
     }
 
-    logger.info("generation.cache_miss", {
+    logger.info('generation.cache_miss', {
       userId,
       projectId,
       requestHash,
       cacheKey,
     });
- 
+
     // ── 7. RAG retrieval — fetch similar components ──────────────────────
     let augmentedPrompt: string;
     let ragChunksUsed = 0;
- 
+
     try {
       const chunks = await this.rag.retrieveComponents(trimmedPrompt);
       ragChunksUsed = chunks.length;
       augmentedPrompt = this.rag.buildAugmentedPrompt(trimmedPrompt, chunks);
- 
+
       // For section edits: prepend the current section HTML
       if (isSectionEdit && sectionHtml) {
-        augmentedPrompt = this.buildSectionEditPrompt(
-          trimmedPrompt,
-          sectionHtml,
-          augmentedPrompt
-        );
+        augmentedPrompt = this.buildSectionEditPrompt(trimmedPrompt, sectionHtml, augmentedPrompt);
       }
- 
-      logger.info("generation.rag_complete", {
+
+      logger.info('generation.rag_complete', {
         userId,
         promptLength: trimmedPrompt.length,
         ragChunks: ragChunksUsed,
@@ -210,16 +188,17 @@ export class GenerationService {
       });
     } catch (ragErr) {
       // RAG failure is non-fatal — fall back to plain prompt
-      logger.warn("generation.rag_failed", {
+      logger.warn('generation.rag_failed', {
         error: ragErr,
         userId,
         projectId,
       });
-      augmentedPrompt = isSectionEdit && sectionHtml
-        ? this.buildSectionEditPrompt(trimmedPrompt, sectionHtml, trimmedPrompt)
-        : trimmedPrompt;
+      augmentedPrompt =
+        isSectionEdit && sectionHtml
+          ? this.buildSectionEditPrompt(trimmedPrompt, sectionHtml, trimmedPrompt)
+          : trimmedPrompt;
     }
- 
+
     // ── 8. Create generation record ──────────────────────────────────────
     const gen = await generationRepository.create({
       projectId,
@@ -231,17 +210,12 @@ export class GenerationService {
       sectionHtml,
       ragChunksUsed,
     });
- 
+
     const generationId = gen._id.toString();
- 
+
     // Set initial Redis status so SSE endpoint can check before subscribing
-    await redis.set(
-      REDIS_KEYS.jobStatus(generationId),
-      "queued",
-      "EX",
-      CACHE_TTL.job
-    );
- 
+    await redis.set(REDIS_KEYS.jobStatus(generationId), 'queued', 'EX', CACHE_TTL.job);
+
     // ── 9. Enqueue the job ───────────────────────────────────────────────
     const jobData: GenerationJobData = {
       generationId,
@@ -254,29 +228,31 @@ export class GenerationService {
       sectionHtml,
       currentCode: project.currentCode ?? null,
     };
- 
+
     await enqueueGeneration(jobData);
 
-    logger.info("generation.enqueued", {
+    logger.info('generation.enqueued', {
       generationId,
       projectId,
       userId,
       requestHash,
       queueDepth: queueHealth.pending,
     });
- 
+
     return {
       jobId: generationId,
-      status: "queued",
+      status: 'queued',
       cached: false,
       queuePosition: queueHealth.pending,
-      estimatedWaitSeconds: Math.ceil(
-        queueHealth.pending * this.avgGenSeconds
-      ),
+      estimatedWaitSeconds: Math.ceil(queueHealth.pending * this.avgGenSeconds),
     };
   }
- 
-  
+
+  /**
+   * Returns the current generation status for a user-owned job.
+   *
+   * @returns MongoDB status with Redis status taking precedence for terminal states.
+   */
   async getStatus(
     generationId: string,
     userId: string
@@ -285,65 +261,54 @@ export class GenerationService {
     output?: string | null;
   }> {
     const gen = await generationRepository.findById(generationId, userId);
-    if (!gen) throw new NotFoundError("Generation not found.");
+    if (!gen) throw new NotFoundError('Generation not found.');
 
     // Check Redis first (faster)
-    const redisStatus = await redis.get(
-      REDIS_KEYS.jobStatus(generationId)
-    );
- 
-    if (redisStatus === "done") {
-      return { status: "done", output: gen.output };
+    const redisStatus = await redis.get(REDIS_KEYS.jobStatus(generationId));
+
+    if (redisStatus === 'done') {
+      return { status: 'done', output: gen.output };
     }
- 
-    if (redisStatus === "failed") {
-      return { status: "failed" };
+
+    if (redisStatus === 'failed') {
+      return { status: 'failed' };
     }
- 
+
     return { status: gen.status, output: gen.output };
   }
- 
+
   /**
-   * Get history for the history accordion.
+   * Lists recent generation records for a user-owned project.
+   *
+   * @returns Recent, non-archived generation records for the project.
    */
-  async getHistory(
-    projectId: string,
-    userId: string,
-    limit = 10
-  ): Promise<IGeneration[]> {
+  async getHistory(projectId: string, userId: string, limit = 10): Promise<IGeneration[]> {
     // Verify project ownership
     const project = await projectRepository.findOne(projectId, userId);
-    if (!project) throw new NotFoundError("Project not found.");
- 
+    if (!project) throw new NotFoundError('Project not found.');
+
     return generationRepository.findRecentByProject(projectId, limit);
   }
- 
- 
+
   private buildSectionEditPrompt(
     instruction: string,
     currentSectionHtml: string,
     ragContext: string
   ): string {
     return [
-      "[SECTION_EDIT]",
-      "",
-      "Current section HTML (the section you must modify):",
+      '[SECTION_EDIT]',
+      '',
+      'Current section HTML (the section you must modify):',
       currentSectionHtml,
-      "",
-      "Edit instruction:",
+      '',
+      'Edit instruction:',
       instruction,
-      "",
+      '',
       ...(ragContext !== instruction
-        ? ["Reference components for layout/styling inspiration:", ragContext]
+        ? ['Reference components for layout/styling inspiration:', ragContext]
         : []),
-    ].join("\n");
+    ].join('\n');
   }
 }
 
-import { ragService } from "./rag.service.js";
-import { rateLimiterService } from "./rateLimiter.service.js";
- 
-export const generationService = new GenerationService(
-  ragService,
-  rateLimiterService
-);
+export const generationService = new GenerationService(ragService, rateLimiterService);

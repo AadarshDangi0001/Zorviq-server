@@ -1,6 +1,6 @@
-import userModel, { type UserDocument, type UserFields } from "../models/User.model.js";
+import userModel, { type UserDocument, type UserFields } from '../models/User.model.js';
 
-type CreateUserInput = Omit<UserFields, "role"> & { verified?: boolean };
+type CreateUserInput = Omit<UserFields, 'role'> & { verified?: boolean };
 
 export const userRepository = {
   /**
@@ -14,7 +14,7 @@ export const userRepository = {
    * Find user by email with password field selected
    */
   async findByEmailWithPassword(email: string): Promise<UserDocument | null> {
-    return await userModel.findOne({ email }).select("+password") as UserDocument | null;
+    return (await userModel.findOne({ email }).select('+password')) as UserDocument | null;
   },
 
   /**
@@ -40,5 +40,4 @@ export const userRepository = {
   async saveUser(user: UserDocument): Promise<UserDocument> {
     return await user.save();
   },
-
 };

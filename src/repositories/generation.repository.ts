@@ -1,10 +1,7 @@
-import { Types } from "mongoose";
-import {
-  Generation,
-  IGeneration,
-  GenerationStatus,
-} from "../models/Generation.model.js";
-import { logger } from "../lib/logger.js";
+import { Types } from 'mongoose';
+import type { IGeneration, GenerationStatus } from '../models/Generation.model.js';
+import { Generation } from '../models/Generation.model.js';
+import { logger } from '../lib/logger.js';
 
 export interface CreateGenerationDTO {
   projectId: string;
@@ -45,7 +42,7 @@ export class GenerationRepository {
         ragChunksUsed: dto.ragChunksUsed ?? 0,
       });
 
-      logger.info("generation.created", {
+      logger.info('generation.created', {
         generationId: gen._id.toString(),
         projectId: dto.projectId,
         userId: dto.userId,
@@ -55,7 +52,7 @@ export class GenerationRepository {
 
       return gen;
     } catch (err) {
-      logger.error("generation.create.failed", { error: err, dto });
+      logger.error('generation.create.failed', { error: err, dto });
       throw err;
     }
   }
@@ -63,10 +60,7 @@ export class GenerationRepository {
   /**
    * Update generation status — atomic, uses findByIdAndUpdate (no race conditions)
    */
-  async updateStatus(
-    generationId: string,
-    dto: UpdateStatusDTO
-  ): Promise<IGeneration | null> {
+  async updateStatus(generationId: string, dto: UpdateStatusDTO): Promise<IGeneration | null> {
     const patch: Partial<IGeneration> = {
       status: dto.status,
     };
@@ -81,9 +75,9 @@ export class GenerationRepository {
         generationId,
         { $set: patch },
         { new: true, runValidators: false }
-      ).select("-augmentedPrompt -sectionHtml");
+      ).select('-augmentedPrompt -sectionHtml');
 
-      logger.info("generation.status_updated", {
+      logger.info('generation.status_updated', {
         generationId,
         status: dto.status,
         durationMs: dto.durationMs,
@@ -92,7 +86,7 @@ export class GenerationRepository {
 
       return updated;
     } catch (err) {
-      logger.error("generation.updateStatus.failed", {
+      logger.error('generation.updateStatus.failed', {
         error: err,
         generationId,
         dto,
@@ -104,15 +98,12 @@ export class GenerationRepository {
   /**
    * Get a single generation by ID — validates ownership via userId
    */
-  async findById(
-    generationId: string,
-    userId: string
-  ): Promise<IGeneration | null> {
+  async findById(generationId: string, userId: string): Promise<IGeneration | null> {
     return Generation.findOne({
       _id: new Types.ObjectId(generationId),
       userId: new Types.ObjectId(userId),
     })
-      .select("-augmentedPrompt -sectionHtml")
+      .select('-augmentedPrompt -sectionHtml')
       .lean()
       .exec();
   }
@@ -125,7 +116,7 @@ export class GenerationRepository {
       _id: new Types.ObjectId(generationId),
       userId: new Types.ObjectId(userId),
     })
-      .select("output status")
+      .select('output status')
       .lean()
       .exec();
     return gen?.output ?? null;
@@ -134,10 +125,7 @@ export class GenerationRepository {
   /**
    * Get last N generations for a project (history panel)
    */
-  async findRecentByProject(
-    projectId: string,
-    limit = 10
-  ): Promise<IGeneration[]> {
+  async findRecentByProject(projectId: string, limit = 10): Promise<IGeneration[]> {
     return Generation.findRecentByProject(projectId, limit);
   }
 
@@ -148,7 +136,7 @@ export class GenerationRepository {
   async countActive(userId: string): Promise<number> {
     return Generation.countDocuments({
       userId: new Types.ObjectId(userId),
-      status: { $in: ["queued", "streaming"] },
+      status: { $in: ['queued', 'streaming'] },
     });
   }
 
@@ -157,19 +145,19 @@ export class GenerationRepository {
     const result = await Generation.updateMany(
       {
         userId: new Types.ObjectId(userId),
-        status: { $in: ["queued", "streaming"] },
+        status: { $in: ['queued', 'streaming'] },
         updatedAt: { $lt: cutoff },
       },
       {
         $set: {
-          status: "failed",
-          errorMessage: "Generation expired before completion. Please try again.",
+          status: 'failed',
+          errorMessage: 'Generation expired before completion. Please try again.',
         },
       }
     );
 
     if (result.modifiedCount > 0) {
-      logger.warn("generation.stale_active_failed", {
+      logger.warn('generation.stale_active_failed', {
         userId,
         count: result.modifiedCount,
       });
@@ -186,9 +174,8 @@ export class GenerationRepository {
       projectId: new Types.ObjectId(projectId),
     });
 
-    logger.info("generation.deleted_by_project", { projectId });
+    logger.info('generation.deleted_by_project', { projectId });
   }
-
 }
 
 // Singleton export

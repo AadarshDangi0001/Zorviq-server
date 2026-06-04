@@ -9,69 +9,74 @@ export interface CodeValidationResult {
 }
 
 const VOID_TAGS = new Set([
-  "area",
-  "base",
-  "br",
-  "col",
-  "embed",
-  "hr",
-  "img",
-  "input",
-  "link",
-  "meta",
-  "param",
-  "source",
-  "track",
-  "wbr",
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 ]);
 
 const TAILWIND_CLASS_HINTS = [
-  "bg-",
-  "text-",
-  "flex",
-  "grid",
-  "rounded",
-  "shadow",
-  "hover:",
-  "md:",
-  "lg:",
-  "px-",
-  "py-",
-  "mx-",
-  "my-",
-  "from-",
-  "to-",
-  "via-",
+  'bg-',
+  'text-',
+  'flex',
+  'grid',
+  'rounded',
+  'shadow',
+  'hover:',
+  'md:',
+  'lg:',
+  'px-',
+  'py-',
+  'mx-',
+  'my-',
+  'from-',
+  'to-',
+  'via-',
 ];
 
 export class CodeValidatorService {
   private readonly dangerousPatterns = [
-    { pattern: /document\.cookie/i, message: "Access to document.cookie is not allowed." },
-    { pattern: /window\.top/i, message: "Access to window.top is not allowed." },
-    { pattern: /parent\./i, message: "Access to parent frames is not allowed." },
-    { pattern: /localStorage/i, message: "localStorage access is not allowed." },
-    { pattern: /sessionStorage/i, message: "sessionStorage access is not allowed." },
-    { pattern: /eval\s*\(/i, message: "eval() is not allowed." },
-    { pattern: /new\s+Function\s*\(/i, message: "Function constructor is not allowed." },
-    { pattern: /javascript:/i, message: "javascript: URLs are not allowed." },
-    { pattern: /\bfetch\s*\(/i, message: "Network fetch calls are not allowed in generated HTML." },
-    { pattern: /XMLHttpRequest/i, message: "XHR calls are not allowed in generated HTML." },
+    { pattern: /document\.cookie/i, message: 'Access to document.cookie is not allowed.' },
+    { pattern: /window\.top/i, message: 'Access to window.top is not allowed.' },
+    { pattern: /parent\./i, message: 'Access to parent frames is not allowed.' },
+    { pattern: /localStorage/i, message: 'localStorage access is not allowed.' },
+    { pattern: /sessionStorage/i, message: 'sessionStorage access is not allowed.' },
+    { pattern: /eval\s*\(/i, message: 'eval() is not allowed.' },
+    { pattern: /new\s+Function\s*\(/i, message: 'Function constructor is not allowed.' },
+    { pattern: /javascript:/i, message: 'javascript: URLs are not allowed.' },
+    { pattern: /\bfetch\s*\(/i, message: 'Network fetch calls are not allowed in generated HTML.' },
+    { pattern: /XMLHttpRequest/i, message: 'XHR calls are not allowed in generated HTML.' },
   ];
 
+  /**
+   * Normalizes model output into exportable HTML and removes dangerous inline constructs.
+   *
+   * @returns Sanitized standalone HTML or an HTML fragment when fragments are allowed.
+   */
   sanitize(code: string, options: CodeValidationOptions = {}): string {
     const unwrapped = this.unwrapModelOutput(code);
     const normalized = unwrapped
-      .replace(/\\n/g, "\n")
+      .replace(/\\n/g, '\n')
       .replace(/\\"/g, '"')
       .replace(/\\'/g, "'")
-      .replace(/\\\//g, "/")
-      .replace(/\r\n?/g, "\n")
-      .replace(/^\uFEFF/, "")
-      .replace(/\bhover:scale-103\b/g, "hover:scale-[1.03]")
-      .replace(/\bscale-103\b/g, "scale-[1.03]")
-      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
-      .replace(/\son\w+\s*=\s*`[^`]*`/gi, "")
-      .replace(/\s(href|src)\s*=\s*["']javascript:[^"']*["']/gi, "")
+      .replace(/\\\//g, '/')
+      .replace(/\r\n?/g, '\n')
+      .replace(/^\uFEFF/, '')
+      .replace(/\bhover:scale-103\b/g, 'hover:scale-[1.03]')
+      .replace(/\bscale-103\b/g, 'scale-[1.03]')
+      .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+      .replace(/\son\w+\s*=\s*`[^`]*`/gi, '')
+      .replace(/\s(href|src)\s*=\s*["']javascript:[^"']*["']/gi, '')
       .trim();
 
     const withDependencies = options.allowFragment
@@ -81,21 +86,29 @@ export class CodeValidatorService {
     return this.repairTagBalance(withDependencies).trim();
   }
 
+  /**
+   * Convenience validity check for generated HTML.
+   */
   isValid(code: string, options: CodeValidationOptions = {}): boolean {
     return this.validate(code, options).valid;
   }
 
+  /**
+   * Validates generated HTML for safety, structure, dependency, and nesting issues.
+   *
+   * @returns Validation errors that block persistence and warnings that are logged.
+   */
   validate(code: string, options: CodeValidationOptions = {}): CodeValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
     const trimmed = code.trim();
 
     if (!trimmed || trimmed.length < 20) {
-      errors.push("Generated HTML is too short.");
+      errors.push('Generated HTML is too short.');
     }
 
     if (/\\n|\\"/.test(trimmed)) {
-      errors.push("Generated HTML contains escaped newline or quote sequences.");
+      errors.push('Generated HTML contains escaped newline or quote sequences.');
     }
 
     for (const issue of this.dangerousPatterns) {
@@ -105,18 +118,18 @@ export class CodeValidatorService {
     }
 
     if (/\son\w+\s*=/.test(trimmed)) {
-      errors.push("Inline event handlers are not allowed.");
+      errors.push('Inline event handlers are not allowed.');
     }
 
     if (!options.allowFragment) {
       if (!/^<!doctype html>/i.test(trimmed)) {
-        errors.push("Standalone output must begin with <!DOCTYPE html>.");
+        errors.push('Standalone output must begin with <!DOCTYPE html>.');
       }
-      for (const tag of ["html", "head", "body"]) {
-        if (!new RegExp(`<${tag}[\\s>]`, "i").test(trimmed)) {
+      for (const tag of ['html', 'head', 'body']) {
+        if (!new RegExp(`<${tag}[\\s>]`, 'i').test(trimmed)) {
           errors.push(`Standalone output is missing <${tag}>.`);
         }
-        if (!new RegExp(`</${tag}>`, "i").test(trimmed)) {
+        if (!new RegExp(`</${tag}>`, 'i').test(trimmed)) {
           errors.push(`Standalone output is missing </${tag}>.`);
         }
       }
@@ -125,11 +138,11 @@ export class CodeValidatorService {
     const usesTailwind = this.usesTailwindClasses(trimmed);
     const hasTailwindCdn = /cdn\.tailwindcss\.com/i.test(trimmed);
     if (usesTailwind && !hasTailwindCdn) {
-      errors.push("Tailwind utility classes are present but Tailwind CDN is missing.");
+      errors.push('Tailwind utility classes are present but Tailwind CDN is missing.');
     }
 
     if (/\b(?:hover:)?scale-103\b/.test(trimmed)) {
-      errors.push("Invalid Tailwind scale-103 class is present.");
+      errors.push('Invalid Tailwind scale-103 class is present.');
     }
 
     const externalAssetErrors = this.validateExternalAssets(trimmed);
@@ -139,7 +152,7 @@ export class CodeValidatorService {
     errors.push(...nestingErrors);
 
     if (!options.allowFragment && !/<title>[^<]+<\/title>/i.test(trimmed)) {
-      warnings.push("Standalone output should include a non-empty <title>.");
+      warnings.push('Standalone output should include a non-empty <title>.');
     }
 
     return {
@@ -159,22 +172,17 @@ export class CodeValidatorService {
 
     if (
       (output.startsWith('"') && output.endsWith('"')) ||
-      (output.startsWith("{") && output.endsWith("}"))
+      (output.startsWith('{') && output.endsWith('}'))
     ) {
       try {
         const parsed = JSON.parse(output) as unknown;
-        if (typeof parsed === "string") {
+        if (typeof parsed === 'string') {
           return parsed;
         }
-        if (parsed && typeof parsed === "object") {
+        if (parsed && typeof parsed === 'object') {
           const record = parsed as Record<string, unknown>;
-          const html =
-            record.html ??
-            record.code ??
-            record.output ??
-            record.content ??
-            record.data;
-          if (typeof html === "string") {
+          const html = record.html ?? record.code ?? record.output ?? record.content ?? record.data;
+          if (typeof html === 'string') {
             return html;
           }
         }
@@ -197,24 +205,24 @@ export class CodeValidatorService {
 
     const title = this.extractHeadingTitle(code);
     const bodyContent = code
-      .replace(/^<!doctype html>\s*/i, "")
-      .replace(/<\/?(html|head|body)[^>]*>/gi, "")
+      .replace(/^<!doctype html>\s*/i, '')
+      .replace(/<\/?(html|head|body)[^>]*>/gi, '')
       .trim();
 
     return [
-      "<!DOCTYPE html>",
+      '<!DOCTYPE html>',
       '<html lang="en">',
-      "<head>",
+      '<head>',
       '  <meta charset="UTF-8">',
       '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
       `  <title>${this.escapeText(title)}</title>`,
       '  <script src="https://cdn.tailwindcss.com"></script>',
-      "</head>",
+      '</head>',
       '<body class="antialiased">',
       bodyContent,
-      "</body>",
-      "</html>",
-    ].join("\n");
+      '</body>',
+      '</html>',
+    ].join('\n');
   }
 
   private ensureTailwindCdn(code: string): string {
@@ -232,16 +240,19 @@ export class CodeValidatorService {
 
   private extractHeadingTitle(code: string): string {
     const heading = code.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
-    const cleaned = heading?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    return cleaned || "Generated Website";
+    const cleaned = heading
+      ?.replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || 'Generated Website';
   }
 
   private escapeText(value: string): string {
     return value
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   private usesTailwindClasses(code: string): boolean {
@@ -253,22 +264,23 @@ export class CodeValidatorService {
 
   private validateExternalAssets(code: string): string[] {
     const errors: string[] = [];
-    const assetPattern = /<(script|link|img|iframe|source)\b[^>]*(?:src|href)\s*=\s*["']([^"']+)["'][^>]*>/gi;
+    const assetPattern =
+      /<(script|link|img|iframe|source)\b[^>]*(?:src|href)\s*=\s*["']([^"']+)["'][^>]*>/gi;
     for (const match of code.matchAll(assetPattern)) {
       const tag = match[1].toLowerCase();
       const url = match[2];
       if (
-        url.startsWith("data:") ||
-        url.startsWith("#") ||
-        url.startsWith("mailto:") ||
-        url.startsWith("tel:")
+        url.startsWith('data:') ||
+        url.startsWith('#') ||
+        url.startsWith('mailto:') ||
+        url.startsWith('tel:')
       ) {
         continue;
       }
       if (/^(?:script|main|app)\.js$/i.test(url)) {
         errors.push(`Referenced script file does not exist inline: ${url}.`);
       }
-      if (!/^https:\/\//i.test(url) && !url.startsWith("/")) {
+      if (!/^https:\/\//i.test(url) && !url.startsWith('/')) {
         errors.push(`${tag} dependency must use https:// or be an absolute app path: ${url}.`);
       }
     }
@@ -278,7 +290,8 @@ export class CodeValidatorService {
   private repairTagBalance(code: string): string {
     const stack: string[] = [];
     const output: string[] = [];
-    const tagPattern = /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?([a-zA-Z][a-zA-Z0-9:-]*)(?:\s[^<>]*)?>/gi;
+    const tagPattern =
+      /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?([a-zA-Z][a-zA-Z0-9:-]*)(?:\s[^<>]*)?>/gi;
     let cursor = 0;
 
     for (const match of code.matchAll(tagPattern)) {
@@ -287,12 +300,12 @@ export class CodeValidatorService {
       const tagName = match[1]?.toLowerCase();
       cursor = (match.index ?? 0) + fullTag.length;
 
-      if (!tagName || fullTag.startsWith("<!--") || /^<!doctype/i.test(fullTag)) {
+      if (!tagName || fullTag.startsWith('<!--') || /^<!doctype/i.test(fullTag)) {
         output.push(fullTag);
         continue;
       }
 
-      if (fullTag.startsWith("</")) {
+      if (fullTag.startsWith('</')) {
         const top = stack.at(-1);
         if (top === tagName) {
           stack.pop();
@@ -314,7 +327,7 @@ export class CodeValidatorService {
       }
 
       output.push(fullTag);
-      if (!VOID_TAGS.has(tagName) && !fullTag.endsWith("/>")) {
+      if (!VOID_TAGS.has(tagName) && !fullTag.endsWith('/>')) {
         stack.push(tagName);
       }
     }
@@ -328,26 +341,24 @@ export class CodeValidatorService {
       }
     }
 
-    return output.join("");
+    return output.join('');
   }
 
-  private validateTagNesting(
-    code: string,
-    _options: CodeValidationOptions
-  ): string[] {
+  private validateTagNesting(code: string, _options: CodeValidationOptions): string[] {
     const errors: string[] = [];
     const stack: string[] = [];
-    const tagPattern = /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?([a-zA-Z][a-zA-Z0-9:-]*)(?:\s[^<>]*)?>/gi;
+    const tagPattern =
+      /<!--[\s\S]*?-->|<!doctype[^>]*>|<\/?([a-zA-Z][a-zA-Z0-9:-]*)(?:\s[^<>]*)?>/gi;
 
     for (const match of code.matchAll(tagPattern)) {
       const fullTag = match[0];
       const tagName = match[1]?.toLowerCase();
 
-      if (!tagName || fullTag.startsWith("<!--") || /^<!doctype/i.test(fullTag)) {
+      if (!tagName || fullTag.startsWith('<!--') || /^<!doctype/i.test(fullTag)) {
         continue;
       }
 
-      if (fullTag.startsWith("</")) {
+      if (fullTag.startsWith('</')) {
         const expected = stack.pop();
         if (expected !== tagName) {
           errors.push(`Mismatched closing tag </${tagName}>.`);
@@ -355,7 +366,7 @@ export class CodeValidatorService {
         continue;
       }
 
-      if (!VOID_TAGS.has(tagName) && !fullTag.endsWith("/>")) {
+      if (!VOID_TAGS.has(tagName) && !fullTag.endsWith('/>')) {
         stack.push(tagName);
       }
     }

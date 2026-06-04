@@ -1,5 +1,5 @@
-import { logger } from "../lib/logger.js";
-import { embeddingAnalysisService } from "./embeddingAnalysis.service.js";
+import { logger } from '../lib/logger.js';
+import { embeddingAnalysisService } from './embeddingAnalysis.service.js';
 
 interface PineconeHit {
   _score?: number;
@@ -18,19 +18,15 @@ interface PineconeSearchResponse {
 }
 
 export class RagService {
-  private readonly pineconeApiKey = process.env.PINECONE_API_KEY ?? "";
-  private readonly pineconeHost = process.env.PINECONE_INDEX_HOST ?? "";
-  private readonly pineconeNamespace =
-    process.env.PINECONE_COMPONENT_NAMESPACE ?? "components";
-  private readonly pineconeApiVersion =
-    process.env.PINECONE_API_VERSION ?? "2026-04";
-  private readonly minScore = Number(
-    process.env.PINECONE_COMPONENT_THRESHOLD ?? "0.72"
-  );
+  private readonly pineconeApiKey = process.env.PINECONE_API_KEY ?? '';
+  private readonly pineconeHost = process.env.PINECONE_INDEX_HOST ?? '';
+  private readonly pineconeNamespace = process.env.PINECONE_COMPONENT_NAMESPACE ?? 'components';
+  private readonly pineconeApiVersion = process.env.PINECONE_API_VERSION ?? '2026-04';
+  private readonly minScore = Number(process.env.PINECONE_COMPONENT_THRESHOLD ?? '0.72');
 
   async retrieveComponents(prompt: string): Promise<string[]> {
     if (!this.pineconeApiKey || !this.pineconeHost || !process.env.GEMINI_API_KEY) {
-      logger.info("rag.disabled", {
+      logger.info('rag.disabled', {
         hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
         hasPineconeKey: Boolean(this.pineconeApiKey),
         hasPineconeHost: Boolean(this.pineconeHost),
@@ -44,55 +40,55 @@ export class RagService {
       const hits = await this.searchComponents(vector);
       return hits
         .filter((hit) => (hit._score ?? 0) >= this.minScore)
-        .map((hit) => hit.fields?.html ?? hit.fields?.code ?? hit.fields?.chunk_text ?? "")
+        .map((hit) => hit.fields?.html ?? hit.fields?.code ?? hit.fields?.chunk_text ?? '')
         .filter((chunk) => chunk.trim().length > 0)
         .slice(0, 5);
     } catch (error) {
-      logger.warn("rag.retrieve_failed", { error });
+      logger.warn('rag.retrieve_failed', { error });
       return [];
     }
   }
 
   buildAugmentedPrompt(userPrompt: string, chunks: string[]): string {
     const generationContract = [
-      "Generate clean, semantic HTML5 with Tailwind CSS utility classes.",
-      "Write valid, unescaped output.",
-      "Include all dependencies in the HTML file.",
-      "Every tag must be properly closed.",
-      "No syntax errors.",
-      "No escaped characters.",
-    ].join(" ");
+      'Generate clean, semantic HTML5 with Tailwind CSS utility classes.',
+      'Write valid, unescaped output.',
+      'Include all dependencies in the HTML file.',
+      'Every tag must be properly closed.',
+      'No syntax errors.',
+      'No escaped characters.',
+    ].join(' ');
 
     if (chunks.length === 0) {
-      return [generationContract, "", "--- User request ---", userPrompt].join("\n");
+      return [generationContract, '', '--- User request ---', userPrompt].join('\n');
     }
 
     return [
       generationContract,
-      "",
+      '',
       `Here are ${chunks.length} semantically matched reference components.`,
-      "Use them for structure and dependency awareness, but write original HTML.",
-      "",
+      'Use them for structure and dependency awareness, but write original HTML.',
+      '',
       ...chunks.map((html, i) => `--- Reference ${i + 1} ---\n${html}`),
-      "",
-      "--- User request ---",
+      '',
+      '--- User request ---',
       userPrompt,
-    ].join("\n");
+    ].join('\n');
   }
 
   private async searchComponents(vector: number[]): Promise<PineconeHit[]> {
-    const host = this.pineconeHost.replace(/\/+$/, "");
+    const host = this.pineconeHost.replace(/\/+$/, '');
     const endpoint = `${host}/records/namespaces/${encodeURIComponent(
       this.pineconeNamespace
     )}/search`;
 
     const response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        "Api-Key": this.pineconeApiKey,
-        "X-Pinecone-Api-Version": this.pineconeApiVersion,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'Api-Key': this.pineconeApiKey,
+        'X-Pinecone-Api-Version': this.pineconeApiVersion,
       },
       body: JSON.stringify({
         query: {
@@ -101,7 +97,7 @@ export class RagService {
           },
           top_k: 5,
         },
-        fields: ["title", "html", "code", "chunk_text"],
+        fields: ['title', 'html', 'code', 'chunk_text'],
       }),
     });
 

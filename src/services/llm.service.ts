@@ -1,7 +1,7 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
-import { logger } from "../lib/logger.js";
-import { ServiceUnavailableError } from "../lib/apiError.js";
-import { SYSTEM_PROMPT } from "../lib/systemPrompt.js";
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
+import { logger } from '../lib/logger.js';
+import { ServiceUnavailableError } from '../lib/apiError.js';
+import { SYSTEM_PROMPT } from '../lib/systemPrompt.js';
 
 interface StreamResult {
   fullOutput: string;
@@ -36,16 +36,12 @@ function checkCircuit(): void {
     circuitBreaker.isOpen = false;
     circuitBreaker.failures = 0;
     circuitBreaker.openedAt = null;
-    logger.info("llm.circuit_breaker.half_open");
+    logger.info('llm.circuit_breaker.half_open');
     return;
   }
 
-  const retryAfter = Math.ceil(
-    (circuitBreaker.cooldownMs - elapsed) / 1000
-  );
-  throw new ServiceUnavailableError(
-    `AI service temporarily unavailable. Retry in ${retryAfter}s.`
-  );
+  const retryAfter = Math.ceil((circuitBreaker.cooldownMs - elapsed) / 1000);
+  throw new ServiceUnavailableError(`AI service temporarily unavailable. Retry in ${retryAfter}s.`);
 }
 
 function recordFailure(): void {
@@ -53,7 +49,7 @@ function recordFailure(): void {
   if (circuitBreaker.failures >= circuitBreaker.threshold) {
     circuitBreaker.isOpen = true;
     circuitBreaker.openedAt = Date.now();
-    logger.error("llm.circuit_breaker.opened", {
+    logger.error('llm.circuit_breaker.opened', {
       failures: circuitBreaker.failures,
     });
   }
@@ -61,7 +57,7 @@ function recordFailure(): void {
 
 function recordSuccess(): void {
   if (circuitBreaker.failures > 0) {
-    logger.info("llm.circuit_breaker.reset");
+    logger.info('llm.circuit_breaker.reset');
     circuitBreaker.failures = 0;
     circuitBreaker.isOpen = false;
     circuitBreaker.openedAt = null;
@@ -74,15 +70,15 @@ function recordSuccess(): void {
 export class LLMService {
   private client: BedrockRuntimeClient;
   private readonly maxRetries: number = 2;
-  private readonly model = process.env.BEDROCK_MODEL_ID ?? "amazon.nova-pro-v1:0";
-  private readonly inferenceProfileId = process.env.BEDROCK_INFERENCE_PROFILE_ID ?? "";
+  private readonly model = process.env.BEDROCK_MODEL_ID ?? 'amazon.nova-pro-v1:0';
+  private readonly inferenceProfileId = process.env.BEDROCK_INFERENCE_PROFILE_ID ?? '';
   private readonly maxTokens = 8096;
 
   constructor() {
-    const region = process.env.AWS_REGION ?? "ap-south-1";
+    const region = process.env.AWS_REGION ?? 'ap-south-1';
     this.client = new BedrockRuntimeClient({ region });
 
-    logger.info("llm.service.initialized", {
+    logger.info('llm.service.initialized', {
       region,
       model: this.model,
       inferenceProfileId: this.inferenceProfileId || undefined,
@@ -90,8 +86,8 @@ export class LLMService {
   }
 
   private async readResponseBody(body: unknown): Promise<string> {
-    if (!body) return "";
-    if (typeof body === "string") return body;
+    if (!body) return '';
+    if (typeof body === 'string') return body;
     if (body instanceof Uint8Array || Buffer.isBuffer(body)) {
       return new TextDecoder().decode(body);
     }
@@ -101,11 +97,11 @@ export class LLMService {
 
     const chunks: Uint8Array[] = [];
     for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
-      if (typeof chunk === "string") {
+      if (typeof chunk === 'string') {
         chunks.push(new TextEncoder().encode(chunk));
       } else if (chunk instanceof Uint8Array) {
         chunks.push(chunk);
-      } else if (typeof chunk === "number") {
+      } else if (typeof chunk === 'number') {
         chunks.push(Uint8Array.of(chunk));
       }
     }
@@ -120,7 +116,7 @@ export class LLMService {
       const output = parsed.output as Record<string, unknown> | undefined;
       const message = output?.message as Record<string, unknown> | undefined;
       const content = message?.content as Array<Record<string, unknown>> | undefined;
-      const firstText = content?.find((item) => typeof item.text === "string")?.text as
+      const firstText = content?.find((item) => typeof item.text === 'string')?.text as
         | string
         | undefined;
       return (
@@ -158,11 +154,10 @@ export class LLMService {
 
     const client = this.client;
     const startTime = Date.now();
-    let fullOutput = "";
-    let tokenCount = 0;
+    let fullOutput = '';
 
     try {
-      logger.info("llm.stream.start", {
+      logger.info('llm.stream.start', {
         attempt,
         promptLength: augmentedPrompt.length,
         model: this.model,
@@ -175,7 +170,7 @@ export class LLMService {
             system: [{ text: SYSTEM_PROMPT }],
             messages: [
               {
-                role: "user",
+                role: 'user',
                 content: [{ text: augmentedPrompt }],
               },
             ],
@@ -184,13 +179,13 @@ export class LLMService {
             },
           })
         ),
-        contentType: "application/json",
-        accept: "application/json",
+        contentType: 'application/json',
+        accept: 'application/json',
       });
 
       const response = await client.send(command);
       const output = await this.parseBedrockResponse(response);
-      tokenCount = Math.ceil(output.length / 4);
+      const tokenCount = Math.ceil(output.length / 4);
 
       if (output.length > 0) {
         recordSuccess();
@@ -203,7 +198,7 @@ export class LLMService {
 
       const durationMs = Date.now() - startTime;
 
-      logger.info("llm.stream.complete", {
+      logger.info('llm.stream.complete', {
         durationMs,
         tokenCount,
         outputLength: fullOutput.length,
@@ -214,12 +209,10 @@ export class LLMService {
     } catch (err: unknown) {
       const error = err as { status?: number; message?: string; name?: string };
       const isRequestMalformed =
-        typeof error.message === "string" &&
-        /Malformed input request/i.test(error.message);
+        typeof error.message === 'string' && /Malformed input request/i.test(error.message);
       const requiresInferenceProfile =
-        typeof error.message === "string" &&
-        (/inference profile/i.test(error.message) ||
-          /on-demand throughput/i.test(error.message));
+        typeof error.message === 'string' &&
+        (/inference profile/i.test(error.message) || /on-demand throughput/i.test(error.message));
       const isRetryable =
         !requiresInferenceProfile &&
         !isRequestMalformed &&
@@ -228,7 +221,7 @@ export class LLMService {
           error.status === 500 || // internal server error
           (error.status === undefined && fullOutput.length === 0)); // connection error
 
-      logger.warn("llm.stream.error", {
+      logger.warn('llm.stream.error', {
         attempt,
         status: error.status,
         message: error.message,
@@ -241,26 +234,26 @@ export class LLMService {
       if (requiresInferenceProfile) {
         recordFailure();
         throw new ServiceUnavailableError(
-          "Bedrock model requires an inference profile. Set BEDROCK_INFERENCE_PROFILE_ID or use a model that supports on-demand throughput."
+          'Bedrock model requires an inference profile. Set BEDROCK_INFERENCE_PROFILE_ID or use a model that supports on-demand throughput.'
         );
       }
 
       if (isRetryable && attempt < this.maxRetries) {
         // Exponential back-off: 2s, 4s
         const delay = 2000 * Math.pow(2, attempt);
-        logger.info("llm.stream.retrying", { delay, attempt: attempt + 1 });
+        logger.info('llm.stream.retrying', { delay, attempt: attempt + 1 });
         await new Promise((r) => setTimeout(r, delay));
 
         // Delegate to retry — caller gets a fresh generator
         yield* this.stream(augmentedPrompt, attempt + 1);
-        return { fullOutput: "", tokenCount: 0, durationMs: 0 }; // unreachable but TS needs it
+        return { fullOutput: '', tokenCount: 0, durationMs: 0 }; // unreachable but TS needs it
       }
 
       // 429 rate limit — always record failure
       if (error.status === 429) {
         recordFailure();
         throw new ServiceUnavailableError(
-          "AI service rate limited. Please wait a moment and try again."
+          'AI service rate limited. Please wait a moment and try again.'
         );
       }
 
@@ -269,7 +262,6 @@ export class LLMService {
       throw err;
     }
   }
-
 }
 
 // Singleton — one LLMService for the whole process

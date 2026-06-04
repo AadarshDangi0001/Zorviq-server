@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { config } from './env.js';
+import { logger } from '../lib/logger.js';
 
 export async function connectDB(uri = config.MONGO_URI) {
   if (!uri) {
@@ -9,8 +10,8 @@ export async function connectDB(uri = config.MONGO_URI) {
   mongoose.set('strictQuery', false);
   await mongoose.connect(uri, {
     autoIndex: false,
-    serverSelectionTimeoutMS: 5000
+    serverSelectionTimeoutMS: 5000,
   });
 
-  console.log('MongoDB connected');
+  logger.info('Mongodb Connected');
 }

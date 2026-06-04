@@ -5,6 +5,12 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "start": "node dist/server.js",
     "dev": "nodemon --watch server.ts --watch src --ext ts,json --exec \"npm run build && node dist/server.js\""
   },
@@ -45,6 +51,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.19",
@@ -53,7 +60,18 @@
     "@types/node": "^20.11.0",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
+    "@types/supertest": "^6.0.3",
+    "eslint": "^10.4.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import-x": "^4.16.2",
+    "eslint-plugin-promise": "^7.3.0",
+    "eslint-plugin-security": "^4.0.0",
+    "mongodb-memory-server": "^10.3.0",
     "nodemon": "^3.1.14",
-    "typescript": "^5.5.4"
+    "prettier": "^3.8.3",
+    "supertest": "^7.1.4",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.0.15"
   }
 }

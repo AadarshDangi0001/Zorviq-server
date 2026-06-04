@@ -1,4 +1,4 @@
-import mongoose, { type Document, type Model, type Types, Schema } from "mongoose";
+import mongoose, { type Document, type Model, type Types, Schema } from 'mongoose';
 
 export interface IProject extends Document {
   _id: Types.ObjectId;
@@ -13,7 +13,7 @@ const projectSchema = new Schema<IProject>(
   {
     userId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -41,4 +41,4 @@ const projectSchema = new Schema<IProject>(
 
 export const Project =
   (mongoose.models.Project as Model<IProject> | undefined) ??
-  mongoose.model<IProject>("Project", projectSchema);
+  mongoose.model<IProject>('Project', projectSchema);

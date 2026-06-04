@@ -1,6 +1,6 @@
-import crypto from "crypto";
-import { redisClient } from "../config/redis.js";
-import { logger } from "../lib/logger.js";
+import crypto from 'crypto';
+import { redisClient } from '../config/redis.js';
+import { logger } from '../lib/logger.js';
 
 export const CACHE_TTL_SECONDS = {
   authUser: 5 * 60,
@@ -11,10 +11,9 @@ export const CACHE_TTL_SECONDS = {
 export const CACHE_KEYS = {
   authUser: (userId: string) => `auth:user:${userId}`,
   blockedToken: (token: string) =>
-    `auth:blocked:${crypto.createHash("sha256").update(token).digest("hex")}`,
+    `auth:blocked:${crypto.createHash('sha256').update(token).digest('hex')}`,
   projectList: (userId: string) => `projects:${userId}:list`,
-  projectDetail: (userId: string, projectId: string) =>
-    `projects:${userId}:detail:${projectId}`,
+  projectDetail: (userId: string, projectId: string) => `projects:${userId}:detail:${projectId}`,
 } as const;
 
 class CacheService {
@@ -26,7 +25,7 @@ class CacheService {
       if (!raw) return null;
       return JSON.parse(raw) as T;
     } catch (error) {
-      logger.warn("cache.get_failed", { key, error });
+      logger.warn('cache.get_failed', { key, error });
       return null;
     }
   }
@@ -37,7 +36,7 @@ class CacheService {
     try {
       return redisClient.get(key);
     } catch (error) {
-      logger.warn("cache.get_raw_failed", { key, error });
+      logger.warn('cache.get_raw_failed', { key, error });
       return null;
     }
   }
@@ -46,9 +45,9 @@ class CacheService {
     if (!redisClient) return;
 
     try {
-      await redisClient.set(key, JSON.stringify(value), "EX", ttlSeconds);
+      await redisClient.set(key, JSON.stringify(value), 'EX', ttlSeconds);
     } catch (error) {
-      logger.warn("cache.set_failed", { key, ttlSeconds, error });
+      logger.warn('cache.set_failed', { key, ttlSeconds, error });
     }
   }
 
@@ -58,7 +57,7 @@ class CacheService {
     try {
       await redisClient.del(...keys);
     } catch (error) {
-      logger.warn("cache.del_failed", { keys, error });
+      logger.warn('cache.del_failed', { keys, error });
     }
   }
 }

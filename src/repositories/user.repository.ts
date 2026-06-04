@@ -40,4 +40,11 @@ export const userRepository = {
   async saveUser(user: UserDocument): Promise<UserDocument> {
     return await user.save();
   },
+
+  /**
+   * Find user by ID with GitHub access token selected
+   */
+  async findByIdWithGithubToken(userId: string): Promise<UserDocument | null> {
+    return (await userModel.findById(userId).select('+githubAccessToken')) as UserDocument | null;
+  },
 };

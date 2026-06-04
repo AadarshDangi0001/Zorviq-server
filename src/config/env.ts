@@ -24,6 +24,9 @@ export const config = {
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? '',
   GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL ?? '',
+  GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID ?? '',
+  GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET ?? '',
+  GITHUB_CALLBACK_URL: process.env.GITHUB_CALLBACK_URL ?? '',
   FRONTEND_ORIGINS: process.env.FRONTEND_ORIGINS ?? '',
   LOCAL_FRONTEND_URL: process.env.LOCAL_FRONTEND_URL ?? 'http://localhost:3000',
   FRONTEND_URL:
@@ -65,4 +68,8 @@ export const getBackendUrl = (req?: {
 
 export const isGoogleAuthConfigured = Boolean(
   config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET && config.GOOGLE_CALLBACK_URL
+);
+
+export const isGitHubConfigured = Boolean(
+  config.GITHUB_CLIENT_ID && config.GITHUB_CLIENT_SECRET && config.GITHUB_CALLBACK_URL
 );

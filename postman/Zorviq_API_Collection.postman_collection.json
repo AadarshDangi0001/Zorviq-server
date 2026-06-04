@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Zorviq API - AI Code Generation Test Suite",
-    "description": "Professional Postman collection for Zorviq server. Covers auth, projects, AI code generation jobs, SSE/status/history, project export, negative validations, and optional direct Amazon Bedrock Runtime provider smoke testing. Run Login - Verified QA User before protected requests, or set auth_token manually.",
+    "description": "Professional Postman collection for Zorviq server. Covers auth, projects, AI code generation jobs, SSE/status/history, project export, GitHub deploy, negative validations, and optional direct Amazon Bedrock Runtime provider smoke testing. Run Login - Verified QA User before protected requests, or set auth_token manually.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -36,6 +36,7 @@
           "  pm.expect(body).to.not.match(/\\\"password\\\"\\s*:/i);",
           "  pm.expect(body).to.not.match(/\\\"resetPasswordToken\\\"\\s*:/i);",
           "  pm.expect(body).to.not.match(/\\\"verificationToken\\\"\\s*:/i);",
+          "  pm.expect(body).to.not.match(/\\\"githubAccessToken\\\"\\s*:/i);",
           "  pm.expect(body).to.not.match(/\\\"passwordHash\\\"\\s*:/i);",
           "});",
           "",
@@ -759,6 +760,117 @@
                   "pm.test('Export has a content disposition filename', function () {",
                   "  pm.expect(pm.response.headers.get('Content-Disposition')).to.include('attachment');",
                   "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04b - GitHub Deploy",
+      "item": [
+        {
+          "name": "GitHub Connection Status",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{auth_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "description": "Returns whether the authenticated user has connected GitHub. Does not expose access tokens.",
+            "url": {
+              "raw": "{{base_url}}/api/github/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "github", "status"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('GitHub status returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('GitHub status payload is present', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.success).to.eql(true);",
+                  "  pm.expect(json.data).to.have.property('githubConnected');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Connect GitHub (Browser OAuth)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{auth_token}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "description": "Starts GitHub OAuth for the signed-in user. Open this URL in a browser session that also has the auth cookie, or follow the redirect manually after login. Optional query: returnTo (/editor path on the frontend).",
+            "url": {
+              "raw": "{{base_url}}/api/github/connect?returnTo=/projects",
+              "host": ["{{base_url}}"],
+              "path": ["api", "github", "connect"],
+              "query": [
+                { "key": "returnTo", "value": "/projects" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create GitHub Repository From Project",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{auth_token}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "description": "Creates a GitHub repository and pushes index.html and README.md from the project's generated code. Requires GitHub to be connected first.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"private\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/github/repos/{{project_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "github", "repos", "{{project_id}}"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('GitHub deploy returns 201 when connected', function () {",
+                  "  pm.expect([201, 403, 503]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "  pm.test('Repository URL is returned', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data.repositoryUrl).to.match(/^https:\\/\\/github\\.com\\//);",
+                  "  });",
+                  "}"
                 ]
               }
             }

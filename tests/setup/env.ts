@@ -6,3 +6,6 @@ process.env.LOCAL_FRONTEND_URL = 'http://localhost:3000';
 process.env.RESEND_SKIP_EMAIL = 'true';
 process.env.REDIS_URL = '';
 process.env.REDIS_HOST = '';
+process.env.GITHUB_CLIENT_ID = 'test-github-client-id';
+process.env.GITHUB_CLIENT_SECRET = 'test-github-client-secret';
+process.env.GITHUB_CALLBACK_URL = 'http://localhost:4000/api/github/callback';

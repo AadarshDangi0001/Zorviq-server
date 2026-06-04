@@ -10,6 +10,10 @@ export type UserFields = {
   fullname: string;
   role: UserRole;
   googleId?: string;
+  githubConnected?: boolean;
+  githubUsername?: string;
+  githubAvatar?: string;
+  githubAccessToken?: string;
   verified: boolean;
   verificationToken?: string;
   verificationTokenExpire?: Date;
@@ -26,6 +30,7 @@ type UserModel = Model<UserFields, object, UserMethods>;
 
 const removePrivateFields = (_doc: unknown, ret: Record<string, unknown>) => {
   delete ret.password;
+  delete ret.githubAccessToken;
   delete ret.verificationToken;
   delete ret.verificationTokenExpire;
   delete ret.resetPasswordToken;
@@ -60,6 +65,20 @@ const userSchema = new mongoose.Schema<UserFields, UserModel, UserMethods>(
     },
     googleId: {
       type: String,
+    },
+    githubConnected: {
+      type: Boolean,
+      default: false,
+    },
+    githubUsername: {
+      type: String,
+    },
+    githubAvatar: {
+      type: String,
+    },
+    githubAccessToken: {
+      type: String,
+      select: false,
     },
     verified: {
       type: Boolean,

@@ -1,39 +1,37 @@
-import PQueue from "p-queue";
-import crypto from "crypto";
-import { redis } from "../config/redis.js";
-import { llmService } from "../services/llm.service.js";
-import { generationRepository } from "../repositories/generation.repository.js";
-import { projectRepository } from "../repositories/project.repository.js";
-import { logger } from "../lib/logger.js";
-import { CodeValidatorService } from "../services/codeValidator.service.js";
-import { embeddingAnalysisService } from "../services/embeddingAnalysis.service.js";
-import { CACHE_KEYS, cacheService } from "../services/cache.service.js";
- 
+import PQueue from 'p-queue';
+import crypto from 'crypto';
+import { redis } from '../config/redis.js';
+import { llmService } from '../services/llm.service.js';
+import { generationRepository } from '../repositories/generation.repository.js';
+import { projectRepository } from '../repositories/project.repository.js';
+import { logger } from '../lib/logger.js';
+import { CodeValidatorService } from '../services/codeValidator.service.js';
+import { embeddingAnalysisService } from '../services/embeddingAnalysis.service.js';
+import { CACHE_KEYS, cacheService } from '../services/cache.service.js';
 
 export interface GenerationJobData {
   generationId: string;
   projectId: string;
   userId: string;
-  augmentedPrompt: string;  // prompt + RAG context
-  originalPrompt: string;   // used as cache key
+  augmentedPrompt: string; // prompt + RAG context
+  originalPrompt: string; // used as cache key
   isSectionEdit: boolean;
   sectionId: string | null;
   sectionHtml: string | null;
   currentCode: string | null; // needed for section replacement
 }
- 
 
 export const REDIS_KEYS = {
-  jobStatus:  (jobId: string) => `job:${jobId}:status`,
-  jobBuffer:  (jobId: string) => `job:${jobId}:buf`,
+  jobStatus: (jobId: string) => `job:${jobId}:status`,
+  jobBuffer: (jobId: string) => `job:${jobId}:buf`,
   jobChannel: (jobId: string) => `job:${jobId}`,
-  promptCache:(hash: string)  => `pc:${hash}`,
-  queueDepth: ()              => "queue:depth",
+  promptCache: (hash: string) => `pc:${hash}`,
+  queueDepth: () => 'queue:depth',
 } as const;
- 
+
 export const CACHE_TTL = {
-  job:    3600,  // 1 hour — enough for any SSE reconnect window
-  prompt: 3600,  // 1 hour — prompt result cache
+  job: 3600, // 1 hour — enough for any SSE reconnect window
+  prompt: 3600, // 1 hour — prompt result cache
 } as const;
 
 export interface PromptCacheScope {
@@ -45,7 +43,7 @@ export interface PromptCacheScope {
 
 function hashNullable(value?: string | null): string | null {
   if (!value) return null;
-  return crypto.createHash("sha256").update(value).digest("hex");
+  return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 export function buildRequestHash(
@@ -55,7 +53,7 @@ export function buildRequestHash(
   scope: PromptCacheScope
 ): string {
   return crypto
-    .createHash("sha256")
+    .createHash('sha256')
     .update(
       JSON.stringify({
         userId: scope.userId,
@@ -67,9 +65,9 @@ export function buildRequestHash(
         sectionHtmlHash: hashNullable(scope.sectionHtml),
       })
     )
-    .digest("hex");
+    .digest('hex');
 }
- 
+
 export function buildPromptCacheKey(
   prompt: string,
   isSectionEdit: boolean,
@@ -80,53 +78,49 @@ export function buildPromptCacheKey(
     buildRequestHash(prompt.toLowerCase(), isSectionEdit, sectionId, scope)
   );
 }
- 
+
 // ─────────────────────────────────────────────
 // Section edit: replace one section in full page code
 // ─────────────────────────────────────────────
-function applySectionEdit(
-  currentCode: string,
-  sectionId: string,
-  newSectionHtml: string
-): string {
+function applySectionEdit(currentCode: string, sectionId: string, newSectionHtml: string): string {
   // Match the opening tag of the section (any element with data-section-id)
   // and everything up to (but not including) the next section or end of string
-  const escapedId = sectionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
- 
+  const escapedId = sectionId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   // Strategy: find the section tag, then find its closing tag by counting nesting
   const openTagPattern = new RegExp(
     `<([a-zA-Z][a-zA-Z0-9]*)([^>]*data-section-id=["']${escapedId}["'][^>]*)>`,
-    "s"
+    's'
   );
- 
+
   const match = openTagPattern.exec(currentCode);
   if (!match) {
-    logger.warn("section_edit.section_not_found", { sectionId });
+    logger.warn('section_edit.section_not_found', { sectionId });
     // Fallback: append the new section rather than replacing
-    return currentCode + "\n" + newSectionHtml;
+    return currentCode + '\n' + newSectionHtml;
   }
- 
+
   const tagName = match[1];
   const startIndex = match.index;
- 
+
   // Count nesting depth to find the matching closing tag
   let depth = 0;
   let i = startIndex;
-  const openPattern = new RegExp(`<${tagName}(\\s|>)`, "gi");
-  const closePattern = new RegExp(`</${tagName}>`, "gi");
- 
+  const openPattern = new RegExp(`<${tagName}(\\s|>)`, 'gi');
+  const closePattern = new RegExp(`</${tagName}>`, 'gi');
+
   // Reset lastIndex
   openPattern.lastIndex = startIndex;
   closePattern.lastIndex = startIndex;
- 
+
   let endIndex = -1;
- 
+
   while (i < currentCode.length) {
     const nextOpen = openPattern.exec(currentCode);
     const nextClose = closePattern.exec(currentCode);
- 
+
     if (!nextClose) break;
- 
+
     if (nextOpen && nextOpen.index < nextClose.index) {
       depth++;
       i = nextOpen.index + 1;
@@ -143,58 +137,50 @@ function applySectionEdit(
       closePattern.lastIndex = i;
     }
   }
- 
+
   if (endIndex === -1) {
-    logger.warn("section_edit.closing_tag_not_found", { sectionId, tagName });
+    logger.warn('section_edit.closing_tag_not_found', { sectionId, tagName });
     // Safe fallback: return original with appended edit
-    return currentCode + "\n" + newSectionHtml;
+    return currentCode + '\n' + newSectionHtml;
   }
- 
-  return (
-    currentCode.slice(0, startIndex) +
-    newSectionHtml +
-    currentCode.slice(endIndex)
-  );
+
+  return currentCode.slice(0, startIndex) + newSectionHtml + currentCode.slice(endIndex);
 }
- 
 
 // p-queue configuration
-const configuredConcurrency = Number.parseInt(
-  process.env.QUEUE_CONCURRENCY ?? "5",
-  10
-);
+const configuredConcurrency = Number.parseInt(process.env.QUEUE_CONCURRENCY ?? '5', 10);
 const queueConcurrency = Math.min(
   5,
   Math.max(1, Number.isFinite(configuredConcurrency) ? configuredConcurrency : 5)
 );
- 
+
 export const generationQueue = new PQueue({
   concurrency: queueConcurrency,
-  timeout: 120_000,    // 2 min max per job — Claude's worst case
+  timeout: 120_000, // 2 min max per queued generation job
 });
- 
 
-generationQueue.on("add", () => {
-  logger.info("queue.job_added", {
+generationQueue.on('add', () => {
+  logger.info('queue.job_added', {
     pending: generationQueue.pending,
     size: generationQueue.size,
   });
 });
- 
-generationQueue.on("completed", () => {
-  logger.info("queue.job_completed", {
+
+generationQueue.on('completed', () => {
+  logger.info('queue.job_completed', {
     pending: generationQueue.pending,
     size: generationQueue.size,
   });
 });
- 
-generationQueue.on("error", (err) => {
-  logger.error("queue.job_error", { error: err });
+
+generationQueue.on('error', (err) => {
+  logger.error('queue.job_error', { error: err });
 });
- 
+
 /**
- * Get queue health snapshot — exposed via health endpoint and
- * returned in 202 response so frontend can show queue position.
+ * Reports the in-process queue depth used by the generation service.
+ *
+ * @returns Pending/running counts and whether the queue is below the rejection threshold.
  */
 export function getQueueHealth(): {
   pending: number;
@@ -209,15 +195,17 @@ export function getQueueHealth(): {
     isHealthy: pending < 50, // degrade gracefully above 50 pending
   };
 }
- 
-
-// Core job processor
 
 const validator = new CodeValidatorService();
- 
-export async function processGenerationJob(
-  job: GenerationJobData
-): Promise<void> {
+
+/**
+ * Processes one queued generation job from LLM invocation through validation and persistence.
+ *
+ * @sideEffects Updates generation/project documents, writes Redis status/cache entries,
+ * and publishes SSE notifications. Errors are persisted and swallowed so the
+ * background worker does not crash the API process.
+ */
+export async function processGenerationJob(job: GenerationJobData): Promise<void> {
   const {
     generationId,
     projectId,
@@ -229,61 +217,65 @@ export async function processGenerationJob(
     sectionHtml,
     currentCode,
   } = job;
- 
+
   const channel = REDIS_KEYS.jobChannel(generationId);
   const startTime = Date.now();
- 
+
   // Mark as streaming in DB + Redis
   await Promise.all([
-    generationRepository.updateStatus(generationId, { status: "streaming" }),
-    redis.set(REDIS_KEYS.jobStatus(generationId), "streaming", "EX", CACHE_TTL.job),
+    generationRepository.updateStatus(generationId, { status: 'streaming' }),
+    redis.set(REDIS_KEYS.jobStatus(generationId), 'streaming', 'EX', CACHE_TTL.job),
   ]);
- 
-  let fullOutput = "";
-  let tokenCount = 0;
- 
+
+  let fullOutput = '';
+
   try {
     // ── Generate from LLM; publish only after validation succeeds. ──
     const streamGen = llmService.stream(augmentedPrompt);
-    let iterResult: IteratorResult<string, { fullOutput: string; tokenCount: number; durationMs: number }>;
- 
+    let iterResult: IteratorResult<
+      string,
+      { fullOutput: string; tokenCount: number; durationMs: number }
+    >;
+
     while (!(iterResult = await streamGen.next()).done) {
       const token = iterResult.value as string;
       fullOutput += token;
     }
- 
+
     // Extract metadata from generator return value
-    const result = iterResult.value as { fullOutput: string; tokenCount: number; durationMs: number };
-    tokenCount = result.tokenCount;
- 
+    const result = iterResult.value as {
+      fullOutput: string;
+      tokenCount: number;
+      durationMs: number;
+    };
+    const tokenCount = result.tokenCount;
+
     // ── Sanitize + validate + semantic pattern analysis ──────────────
     const validationOptions = { allowFragment: isSectionEdit };
     const safeOutput = validator.sanitize(fullOutput, validationOptions);
     const analysis = await embeddingAnalysisService.analyze(safeOutput);
-    const blockingPatternIssues = analysis.issues.filter(
-      (issue) => issue.severity === "error"
-    );
+    const blockingPatternIssues = analysis.issues.filter((issue) => issue.severity === 'error');
     const validation = validator.validate(safeOutput, validationOptions);
 
     if (blockingPatternIssues.length > 0 || !validation.valid) {
-      logger.warn("generation.output_invalid", {
+      logger.warn('generation.output_invalid', {
         generationId,
         outputLength: fullOutput.length,
         validationErrors: validation.errors,
         patternIssues: blockingPatternIssues,
       });
-      throw new Error("Generated output failed safety validation.");
+      throw new Error('Generated output failed safety validation.');
     }
 
     if (validation.warnings.length > 0 || analysis.issues.length > 0) {
-      logger.warn("generation.output_warnings", {
+      logger.warn('generation.output_warnings', {
         generationId,
         validationWarnings: validation.warnings,
         patternIssues: analysis.issues,
         embeddingAnalysisEnabled: analysis.enabled,
       });
     }
- 
+
     // ── For section edits: replace section in full page code ──
     let finalCode: string;
     if (isSectionEdit && sectionId && currentCode) {
@@ -291,27 +283,24 @@ export async function processGenerationJob(
     } else {
       finalCode = safeOutput;
     }
- 
+
     const durationMs = Date.now() - startTime;
- 
-    // ── Persist everything atomically ──────────
+
+    // Persist related DB and Redis updates together, but without a Mongo transaction.
     await Promise.all([
       // Update generation record
       generationRepository.updateStatus(generationId, {
-        status: "done",
+        status: 'done',
         output: finalCode,
         tokenCount,
         durationMs,
       }),
- 
+
       // Update project's current code
       projectRepository.updateCode(projectId, userId, finalCode),
 
-      cacheService.del(
-        CACHE_KEYS.projectList(userId),
-        CACHE_KEYS.projectDetail(userId, projectId)
-      ),
- 
+      cacheService.del(CACHE_KEYS.projectList(userId), CACHE_KEYS.projectDetail(userId, projectId)),
+
       // Cache the result (keyed on original prompt, not augmented)
       redis.set(
         buildPromptCacheKey(originalPrompt, isSectionEdit, sectionId, {
@@ -321,22 +310,17 @@ export async function processGenerationJob(
           sectionHtml,
         }),
         finalCode,
-        "EX",
+        'EX',
         CACHE_TTL.prompt
       ),
- 
+
       // Mark job as done in Redis (for SSE reconnect + status checks)
-      redis.set(
-        REDIS_KEYS.jobStatus(generationId),
-        "done",
-        "EX",
-        CACHE_TTL.job
-      ),
- 
+      redis.set(REDIS_KEYS.jobStatus(generationId), 'done', 'EX', CACHE_TTL.job),
+
       // Set TTL on token buffer (no longer needed after done)
       redis.expire(REDIS_KEYS.jobBuffer(generationId), CACHE_TTL.job),
     ]);
- 
+
     // Publish only validated HTML to active and reconnecting SSE clients.
     await Promise.all([
       redis.publish(channel, finalCode),
@@ -345,9 +329,9 @@ export async function processGenerationJob(
     ]);
 
     // Signal SSE subscribers that stream is complete
-    await redis.publish(channel, "__DONE__");
- 
-    logger.info("generation.completed", {
+    await redis.publish(channel, '__DONE__');
+
+    logger.info('generation.completed', {
       generationId,
       projectId,
       durationMs,
@@ -358,51 +342,45 @@ export async function processGenerationJob(
     });
   } catch (err: unknown) {
     const durationMs = Date.now() - startTime;
-    const errorMessage =
-      err instanceof Error ? err.message : "Unknown error occurred";
- 
-    logger.error("generation.failed", {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+
+    logger.error('generation.failed', {
       generationId,
       projectId,
       durationMs,
       error: err,
     });
- 
+
     // Mark failed in DB + Redis
     await Promise.all([
       generationRepository.updateStatus(generationId, {
-        status: "failed",
+        status: 'failed',
         durationMs,
         errorMessage,
       }),
-      redis.set(
-        REDIS_KEYS.jobStatus(generationId),
-        "failed",
-        "EX",
-        CACHE_TTL.job
-      ),
+      redis.set(REDIS_KEYS.jobStatus(generationId), 'failed', 'EX', CACHE_TTL.job),
     ]).catch((persistErr) => {
       // Don't throw from error handler — log and move on
-      logger.error("generation.failed_to_persist_failure", {
+      logger.error('generation.failed_to_persist_failure', {
         persistErr,
         generationId,
       });
     });
- 
+
     // Signal SSE subscribers of failure
-    await redis.publish(channel, "__ERROR__").catch(() => {});
- 
+    await redis.publish(channel, '__ERROR__').catch(() => {});
+
     // Swallow error so background job failure does not crash the process
     return;
   }
 }
- 
+
 /**
- * Add a job to the FIFO queue.
- * Returns immediately; actual processing is async.
+ * Adds a generation job to the in-process FIFO queue.
+ *
+ * @sideEffects Starts asynchronous background processing; callers receive before
+ * the job has completed.
  */
-export async function enqueueGeneration(
-  job: GenerationJobData
-): Promise<void> {
+export async function enqueueGeneration(job: GenerationJobData): Promise<void> {
   void generationQueue.add(() => processGenerationJob(job));
 }

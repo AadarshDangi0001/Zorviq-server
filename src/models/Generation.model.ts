@@ -1,48 +1,43 @@
+import type { Document, Model, Types } from 'mongoose';
+import mongoose, { Schema } from 'mongoose';
 
-import mongoose, { Document, Schema, Model, Types } from "mongoose";
- 
+export type GenerationStatus = 'queued' | 'streaming' | 'done' | 'failed';
 
-export type GenerationStatus = "queued" | "streaming" | "done" | "failed";
- 
 export interface IGeneration extends Document {
   _id: Types.ObjectId;
   projectId: Types.ObjectId;
   userId: Types.ObjectId;
-  prompt: string;               // original user prompt (shown in history)
-  augmentedPrompt: string;      // prompt + RAG context (sent to Claude)
-  output: string | null;        // final generated HTML
+  prompt: string; // original user prompt (shown in history)
+  augmentedPrompt: string; // prompt + RAG context sent to the LLM provider
+  output: string | null; // final generated HTML
   status: GenerationStatus;
   isSectionEdit: boolean;
-  sectionId: string | null;     // data-section-id of targeted section
-  sectionHtml: string | null;   // original HTML of targeted section
-  ragChunksUsed: number;        // how many RAG components were injected
-  tokenCount: number | null;    // Claude output tokens (for cost tracking)
-  durationMs: number | null;    // total generation time in ms
-  errorMessage: string | null;  // human-readable error if status=failed
+  sectionId: string | null; // data-section-id of targeted section
+  sectionHtml: string | null; // original HTML of targeted section
+  ragChunksUsed: number; // how many RAG components were injected
+  tokenCount: number | null; // approximate output tokens for cost tracking
+  durationMs: number | null; // total generation time in ms
+  errorMessage: string | null; // human-readable error if status=failed
   archived: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
- 
+
 export interface IGenerationModel extends Model<IGeneration> {
-  findRecentByProject(
-    projectId: string,
-    limit?: number
-  ): Promise<IGeneration[]>;
+  findRecentByProject(projectId: string, limit?: number): Promise<IGeneration[]>;
 }
- 
 
 const generationSchema = new Schema<IGeneration>(
   {
     projectId: {
       type: Schema.Types.ObjectId,
-      ref: "Project",
+      ref: 'Project',
       required: true,
       index: true,
     },
     userId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
@@ -50,7 +45,7 @@ const generationSchema = new Schema<IGeneration>(
       type: String,
       required: true,
       trim: true,
-      maxlength: [2000, "Prompt must not exceed 2000 characters"],
+      maxlength: [2000, 'Prompt must not exceed 2000 characters'],
     },
     augmentedPrompt: {
       type: String,
@@ -63,8 +58,8 @@ const generationSchema = new Schema<IGeneration>(
     },
     status: {
       type: String,
-      enum: ["queued", "streaming", "done", "failed"],
-      default: "queued",
+      enum: ['queued', 'streaming', 'done', 'failed'],
+      default: 'queued',
       index: true,
     },
     isSectionEdit: {
@@ -117,24 +112,21 @@ const generationSchema = new Schema<IGeneration>(
     },
   }
 );
- 
 
- 
 // Primary query: "get recent generations for this project"
 generationSchema.index({ projectId: 1, createdAt: -1 });
- 
+
 // Partial index: only index non-terminal jobs (used by queue health checks)
 generationSchema.index(
   { status: 1, createdAt: 1 },
-  { partialFilterExpression: { status: { $in: ["queued", "streaming"] } } }
+  { partialFilterExpression: { status: { $in: ['queued', 'streaming'] } } }
 );
- 
+
 // Archival job: find old completed generations
 generationSchema.index(
   { archived: 1, createdAt: 1 },
   { partialFilterExpression: { archived: false } }
 );
- 
 
 generationSchema.statics.findRecentByProject = function (
   projectId: string,
@@ -143,14 +135,13 @@ generationSchema.statics.findRecentByProject = function (
   return this.find({ projectId, archived: false })
     .sort({ createdAt: -1 })
     .limit(limit)
-    .select("-augmentedPrompt -sectionHtml")
+    .select('-augmentedPrompt -sectionHtml')
     .lean()
     .exec();
 };
- 
 
 export const Generation = (mongoose.models.Generation ||
   mongoose.model<IGeneration, IGenerationModel>(
-    "Generation",
+    'Generation',
     generationSchema
   )) as IGenerationModel;

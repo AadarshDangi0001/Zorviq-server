@@ -98,4 +98,4 @@ Before outputting, mentally verify:
 □ Is the mobile layout tested at 375px mentally?
 □ Does the hero section immediately communicate value in < 5 seconds?
 
-If any answer is NO — revise before outputting.`
+If any answer is NO — revise before outputting.`;

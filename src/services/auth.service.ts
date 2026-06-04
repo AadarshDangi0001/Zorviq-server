@@ -1,21 +1,21 @@
-import jwt from "jsonwebtoken";
-import crypto from "crypto";
-import type { Profile as GoogleProfile } from "passport-google-oauth20";
-import { config } from "../config/env.js";
-import { sendEmail } from "./mail.service.js";
-import { getPasswordResetEmail, getVerificationEmail } from "../utils/emailTemplates.js";
-import { userRepository } from "../repositories/user.repository.js";
-import { logger } from "../lib/logger.js";
-import { CACHE_KEYS, cacheService } from "./cache.service.js";
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import type { Profile as GoogleProfile } from 'passport-google-oauth20';
+import { config } from '../config/env.js';
+import { sendEmail } from './mail.service.js';
+import { getPasswordResetEmail, getVerificationEmail } from '../utils/emailTemplates.js';
+import { userRepository } from '../repositories/user.repository.js';
+import { logger } from '../lib/logger.js';
+import { CACHE_KEYS, cacheService } from './cache.service.js';
 import {
   ApiError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
   ValidationError,
-} from "../lib/apiError.js";
-import type { Request } from "express";
-import type { UserDocument } from "../models/User.model.js";
+} from '../lib/apiError.js';
+import type { Request } from 'express';
+import type { UserDocument } from '../models/User.model.js';
 
 type AuthTokenPayload = jwt.JwtPayload & {
   id?: string;
@@ -25,10 +25,7 @@ type AuthTokenPayload = jwt.JwtPayload & {
 /**
  * Generate JWT token
  */
-const generateToken = (
-  id: string,
-  expiresIn: jwt.SignOptions["expiresIn"] = "7d"
-): string => {
+const generateToken = (id: string, expiresIn: jwt.SignOptions['expiresIn'] = '7d'): string => {
   return jwt.sign({ id }, config.JWT_SECRET, { expiresIn });
 };
 
@@ -38,13 +35,13 @@ const generateToken = (
 const verifyJwt = (token: string): AuthTokenPayload => {
   try {
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    if (typeof decoded === "string") {
-      throw new UnauthorizedError("Invalid token payload");
+    if (typeof decoded === 'string') {
+      throw new UnauthorizedError('Invalid token payload');
     }
     return decoded;
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    throw new UnauthorizedError("Invalid or expired token");
+    throw new UnauthorizedError('Invalid or expired token');
   }
 };
 
@@ -52,13 +49,13 @@ const verifyJwt = (token: string): AuthTokenPayload => {
  * Generate verification email token
  */
 const generateVerificationToken = (email: string): string => {
-  return jwt.sign({ email }, config.JWT_SECRET, { expiresIn: "1h" });
+  return jwt.sign({ email }, config.JWT_SECRET, { expiresIn: '1h' });
 };
 
-const generatePasswordResetToken = (): string => crypto.randomBytes(32).toString("hex");
+const generatePasswordResetToken = (): string => crypto.randomBytes(32).toString('hex');
 
 const hashToken = (token: string): string =>
-  crypto.createHash("sha256").update(token).digest("hex");
+  crypto.createHash('sha256').update(token).digest('hex');
 
 const invalidateAuthUser = async (userId: string): Promise<void> => {
   await cacheService.del(CACHE_KEYS.authUser(userId));
@@ -75,7 +72,11 @@ const serializeUser = (user: UserDocument) => ({
 });
 
 /**
- * Register a new user
+ * Registers a password-based user, hashes the password through the model hook,
+ * and attempts to send a verification email.
+ *
+ * @returns The serialized user and a user-facing registration message.
+ * @sideEffects Writes a user document and may send email.
  */
 export const registerUser = async (
   email: string,
@@ -87,7 +88,7 @@ export const registerUser = async (
   // Check if user already exists
   const existingUser = await userRepository.findByEmail(email);
   if (existingUser) {
-    throw new ValidationError("User with this email already exists");
+    throw new ValidationError('User with this email already exists');
   }
 
   // Create user
@@ -106,11 +107,11 @@ export const registerUser = async (
   try {
     await sendEmail({
       to: email,
-      subject: "Verify your Zorviq account",
+      subject: 'Verify your Zorviq account',
       html: getVerificationEmail(verifyUrl),
     });
   } catch (error) {
-    logger.error("auth.verification_email_failed", {
+    logger.error('auth.verification_email_failed', {
       userId: String(user._id),
       email,
       error,
@@ -119,37 +120,40 @@ export const registerUser = async (
     return {
       user: serializeUser(user),
       message:
-        "Registration successful, but verification email delivery failed. Please request a new verification email.",
+        'Registration successful, but verification email delivery failed. Please request a new verification email.',
     };
   }
 
   return {
     user: serializeUser(user),
-    message: "Registration successful. Please check your email to verify your account.",
+    message: 'Registration successful. Please check your email to verify your account.',
   };
 };
 
 /**
- * Verify user email
+ * Verifies a user email from a signed verification token.
+ *
+ * @returns The updated user document.
+ * @sideEffects Updates the user verification flag and invalidates auth cache.
  */
 export const verifyUserEmail = async (token: string): Promise<UserDocument> => {
   if (!token) {
-    throw new ValidationError("Token is required");
+    throw new ValidationError('Token is required');
   }
 
   const decoded = verifyJwt(token);
 
   if (!decoded.email) {
-    throw new ValidationError("Invalid token");
+    throw new ValidationError('Invalid token');
   }
 
   const user = await userRepository.findByEmail(decoded.email);
   if (!user) {
-    throw new NotFoundError("User not found");
+    throw new NotFoundError('User not found');
   }
 
   if (user.verified) {
-    throw new ValidationError("Already verified");
+    throw new ValidationError('Already verified');
   }
 
   user.verified = true;
@@ -160,7 +164,9 @@ export const verifyUserEmail = async (token: string): Promise<UserDocument> => {
 };
 
 /**
- * Login user
+ * Authenticates a verified password-based user and issues a JWT.
+ *
+ * @returns Serialized user data and a signed auth token.
  */
 export const loginUser = async (
   email: string,
@@ -169,11 +175,11 @@ export const loginUser = async (
   const user = await userRepository.findByEmailWithPassword(email);
 
   if (!user || !(await user.comparePassword(password))) {
-    throw new UnauthorizedError("Invalid email or password");
+    throw new UnauthorizedError('Invalid email or password');
   }
 
   if (!user.verified) {
-    throw new ForbiddenError("Please verify your email first");
+    throw new ForbiddenError('Please verify your email first');
   }
 
   const token = generateToken(String(user._id));
@@ -185,9 +191,13 @@ export const loginUser = async (
 };
 
 /**
- * Get current user
+ * Serializes the authenticated user attached by auth middleware.
+ *
+ * @throws UnauthorizedError when no user is attached to the request.
  */
-export const getCurrentUser = (user: UserDocument | undefined): ReturnType<typeof serializeUser> => {
+export const getCurrentUser = (
+  user: UserDocument | undefined
+): ReturnType<typeof serializeUser> => {
   if (!user) {
     throw new UnauthorizedError();
   }
@@ -196,9 +206,14 @@ export const getCurrentUser = (user: UserDocument | undefined): ReturnType<typeo
 };
 
 /**
- * Forgot password - Send reset email
+ * Creates a hashed password reset token and emails the raw token link.
+ *
+ * @sideEffects Updates reset token fields and sends email when the user exists.
  */
-export const sendPasswordResetEmail = async (email: string, frontendUrl?: string): Promise<void> => {
+export const sendPasswordResetEmail = async (
+  email: string,
+  frontendUrl?: string
+): Promise<void> => {
   const user = await userRepository.findByEmail(email);
   if (!user) {
     return;
@@ -214,22 +229,24 @@ export const sendPasswordResetEmail = async (email: string, frontendUrl?: string
 
   await sendEmail({
     to: email,
-    subject: "Reset your Zorviq password",
+    subject: 'Reset your Zorviq password',
     html: getPasswordResetEmail(resetUrl),
   });
 };
 
 /**
- * Reset password
+ * Resets a password using a valid, unexpired raw reset token.
+ *
+ * @sideEffects Updates the password, clears reset token fields, and invalidates auth cache.
  */
 export const resetUserPassword = async (token: string, newPassword: string): Promise<void> => {
   if (!token) {
-    throw new ValidationError("Invalid token");
+    throw new ValidationError('Invalid token');
   }
 
   const user = await userRepository.findByResetToken(hashToken(token));
   if (!user) {
-    throw new ValidationError("Invalid or expired token");
+    throw new ValidationError('Invalid or expired token');
   }
 
   user.password = newPassword;
@@ -240,7 +257,9 @@ export const resetUserPassword = async (token: string, newPassword: string): Pro
 };
 
 /**
- * Google OAuth callback
+ * Creates or reuses a verified user from a Google OAuth profile and issues a JWT.
+ *
+ * @returns Serialized user data and a signed auth token.
  */
 export const handleGoogleAuth = async (
   profile: GoogleProfile | undefined
@@ -248,7 +267,7 @@ export const handleGoogleAuth = async (
   const email = profile?.emails?.[0]?.value;
 
   if (!profile || !email) {
-    throw new ValidationError("Google account email not found");
+    throw new ValidationError('Google account email not found');
   }
 
   let user = await userRepository.findByEmail(email);
@@ -257,7 +276,7 @@ export const handleGoogleAuth = async (
     user = await userRepository.create({
       email,
       googleId: profile.id,
-      fullname: profile.displayName || email.split("@")[0],
+      fullname: profile.displayName || email.split('@')[0],
       verified: true,
     });
   } else if (!user.verified) {
@@ -275,9 +294,14 @@ export const handleGoogleAuth = async (
 };
 
 /**
- * Resend verification email
+ * Sends a new verification email when an unverified account exists.
+ *
+ * @sideEffects Sends email; intentionally no-ops for missing or already verified users.
  */
-export const resendVerificationEmail = async (email: string, backendUrl?: string): Promise<void> => {
+export const resendVerificationEmail = async (
+  email: string,
+  backendUrl?: string
+): Promise<void> => {
   const user = await userRepository.findByEmail(email);
 
   if (!user) {
@@ -293,13 +317,15 @@ export const resendVerificationEmail = async (email: string, backendUrl?: string
 
   await sendEmail({
     to: email,
-    subject: "Verify your Zorviq account",
+    subject: 'Verify your Zorviq account',
     html: getVerificationEmail(verifyUrl),
   });
 };
 
 /**
- * Logout user - Add token to blocklist
+ * Adds a still-valid JWT to the Redis-backed token blocklist.
+ *
+ * @sideEffects Writes a blocklist cache entry when Redis is configured.
  */
 export const logoutUser = async (token?: string): Promise<void> => {
   if (!token) return;
@@ -313,17 +339,17 @@ export const logoutUser = async (token?: string): Promise<void> => {
       }
     }
   } catch (error) {
-    console.warn("Logout token blocklist skipped:", error);
+    logger.warn('auth.logout_blocklist_skipped', { error });
   }
 };
 
 /**
- * Get token from request
+ * Reads an auth token from the request cookie or Authorization bearer header.
  */
 export const getTokenFromRequest = (req: Request): string | null => {
   let token = req.cookies?.token;
-  if (!token && req.headers.authorization?.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
+  if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
   }
   return token || null;
 };

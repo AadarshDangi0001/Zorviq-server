@@ -1,111 +1,161 @@
 # Generation System Overview
 
-This document explains the generation pipeline, the files involved, and how they connect.
+This document describes the generation pipeline implemented in the current
+codebase. It documents existing behavior only.
 
-## 1. Entry point: routes
+## Entry Points
 
-### `src/routes/generate.routes.ts`
-- Defines generation-related HTTP routes.
-- Uses authentication middleware before allowing generation requests.
-- Routes:
-  - `POST /api/generate` → enqueue generation
-  - `GET /api/generate/stream/:jobId` → SSE stream for live tokens
-  - `GET /api/generate/status/:jobId` → polling fallback status
-  - `GET /api/generate/history/:projectId` → project generation history
+Generation routes live in `src/routes/generate.routes.ts` and require JWT
+authentication.
 
-## 2. Controller layer
+- `POST /api/generate`: validate and enqueue a generation request.
+- `GET /api/generate/stream/:jobId`: open an SSE connection for a generation.
+- `GET /api/generate/status/:jobId`: polling fallback for job status.
+- `GET /api/generate/history/:projectId`: recent generation history for a
+  project.
 
-### `src/controllers/generate.controller.ts`
-- Receives HTTP requests and calls the service layer.
-- `enqueueGeneration` validates request body and delegates to `generationService.enqueue`.
-- `streamGeneration` opens a Server-Sent Events connection and subscribes to Redis pub/sub.
-- `getGenerationStatus` and `getGenerationHistory` forward requests to `generationService`.
+## Controller Layer
 
-## 3. Service layer
+`src/controllers/generate.controller.ts` handles HTTP concerns:
 
-### `src/services/generation.service.ts`
-- Primary business logic for queuing and checking generation jobs.
-- Responsibilities:
-  - verify the project belongs to the user
-  - enforce per-user concurrency and rate limits
-  - check prompt cache
-  - build augmented prompt via RAG
-  - create a generation record
-  - enqueue the job with priority
-- Returns either a cached result or a queued job response.
+- Reads the authenticated user ID from the request.
+- Accepts validated request data from Zod middleware.
+- Delegates enqueue/status/history work to `generationService`.
+- Opens SSE responses, checks job ownership, replays buffered Redis output, and
+  subscribes to Redis pub/sub for completion or failure messages.
 
-### `src/services/rag.service.ts`
-- Provides retrieval of reference components for prompt augmentation.
-- Currently returns an empty array placeholder.
-- Used by `generationService` to build `augmentedPrompt`.
+SSE messages are JSON payloads written as `data: ...` lines. Current event types
+inside the JSON payload are:
 
-### `src/services/llm.service.ts`
-- Streams tokens from the Anthropic Claude model.
-- Handles retries, circuit breaker logic, and streaming metadata.
-- Called from the queue processor.
+- `token`: contains generated HTML data. In the current worker, this is the final
+  validated HTML, not raw live model chunks.
+- `done`: marks successful completion.
+- `error`: marks generation failure.
 
-### `src/services/rateLimiter.service.ts`
-- Enforces per-user rate limits using Redis.
-- Called before queueing a generation.
+## Service Layer
 
-## 4. Queue and worker
+`src/services/generation.service.ts` owns the enqueue decision flow:
 
-### `src/queue/generation.queue.ts`
-- Contains the `generationQueue` powered by `p-queue`.
-- Defines `GenerationJobData` and Redis key helpers.
-- Implements the job processor `processGenerationJob`.
-- Worker responsibilities:
-  - update generation status to `streaming`
-  - stream Claude tokens and publish them to Redis
-  - buffer tokens for reconnecting clients
-  - validate and sanitize final output
-  - replace section HTML for section edit jobs
-  - persist results and update project code
-  - publish completion or error events
+1. Trim and validate prompt length.
+2. Verify that the project belongs to the authenticated user.
+3. Apply Redis-backed per-user rate limiting.
+4. Fail stale active generations and enforce the active-generation limit.
+5. Check in-process queue health.
+6. Look up the Redis prompt cache.
+7. Retrieve RAG components and build the augmented prompt.
+8. Create a MongoDB generation record.
+9. Store initial Redis job status.
+10. Add the job to the in-process queue.
 
-### Redis support
-- `src/config/redis.ts` exports the Redis client and a runtime-checked `redis` helper.
-- Redis is used for:
-  - prompt cache
-  - job status tracking
-  - SSE token buffering
-  - pub/sub event delivery
-  - rate limiting
+Cache hits skip RAG and queue work. They create a completed generation record,
+update the project code from cache, update Redis job status to `done`, and return
+HTTP `200` with the cached code.
 
-## 5. Persistence layer
+Cache misses return HTTP `202` with a job ID, queue position, and estimated wait.
 
-### `src/models/Generation.model.ts`
-- Defines the `Generation` schema and type.
-- Tracks prompt, augmented prompt, output, status, section edit metadata, token count, and durations.
-- Includes helper `findRecentByProject` for history queries.
+## RAG
 
-### `src/repositories/generation.repository.ts`
-- CRUD operations for generation records.
-- Exposes methods like `create`, `updateStatus`, `findById`, `getOutput`, `countActive`, and `findRecentByProject`.
+`src/services/rag.service.ts` retrieves reference components from Pinecone only
+when all required configuration exists:
 
-### `src/models/Project.model.ts`
-- Minimal project schema used by generation.
-- Stores `userId`, `name`, and `currentCode`.
+- `GEMINI_API_KEY`
+- `PINECONE_API_KEY`
+- `PINECONE_INDEX_HOST`
 
-### `src/repositories/project.repository.ts`
-- Provides `findOne(projectId, userId)` to verify ownership.
-- Provides `updateCode(projectId, userId, currentCode)` to persist generated code.
+The prompt is embedded through the embedding analysis service, searched against
+the configured Pinecone namespace, filtered by score, and limited to five
+reference chunks.
 
-## 6. How the pieces connect
+If RAG configuration is missing or retrieval fails, the service logs the
+condition and continues with the plain generation contract plus user prompt.
 
-1. Client calls `POST /api/generate`.
-2. `generate.routes.ts` authenticates and validates input.
-3. `generate.controller.ts` calls `generationService.enqueue`.
-4. `generation.service.ts` checks project ownership and limits.
-5. If cached, it returns cached HTML immediately.
-6. Otherwise, the service creates a generation record and calls `enqueueGeneration`.
-7. `generation.queue.ts` schedules `processGenerationJob`.
-8. Worker streams from `llmService`, publishes live tokens to Redis, and buffers them.
-9. Client connects to `GET /api/generate/stream/:jobId` and receives SSE tokens.
-10. When the job finishes, the worker updates the DB and publishes `__DONE__`.
+## LLM Provider
 
-## 7. Notes
+`src/services/llm.service.ts` calls Amazon Bedrock through
+`@aws-sdk/client-bedrock-runtime`.
 
-- Auth flows are implemented in separate files and were not modified.
-- The generation pipeline now compiles cleanly after fixing Redis typing and project repository wiring.
-- The `project.repository` and `Project.model` files were added so generation can verify ownership and save generated code.
+The default model is Bedrock Nova Pro:
+
+- `BEDROCK_MODEL_ID`, default `amazon.nova-pro-v1:0`
+- `BEDROCK_INFERENCE_PROFILE_ID`, optional override for profile-based access
+- `AWS_REGION`, default `ap-south-1`
+
+The LLM service reads the Bedrock response, chunks the returned text internally,
+tracks approximate token count, retries retryable failures, and uses a
+module-level circuit breaker after repeated failures.
+
+## Queue and Worker
+
+`src/queue/generation.queue.ts` uses in-process `p-queue`.
+
+- Concurrency comes from `QUEUE_CONCURRENCY`, bounded from 1 to 5.
+- Queue timeout is 120 seconds.
+- Queue health is considered unhealthy at 50 pending jobs.
+- Jobs are not persisted in a distributed queue.
+
+The worker:
+
+1. Marks the generation `streaming` in MongoDB and Redis.
+2. Calls Bedrock through `llmService`.
+3. Accumulates the full generated output.
+4. Sanitizes and validates the complete output.
+5. Optionally performs embedding-backed pattern analysis.
+6. Applies section replacement for section edit jobs.
+7. Updates generation status and project code.
+8. Writes prompt cache and job status to Redis.
+9. Pushes the final HTML to the Redis reconnect buffer.
+10. Publishes the final HTML and then `__DONE__` to Redis.
+
+The worker deliberately publishes only validated HTML to clients. It does not
+stream raw, unvalidated model chunks to SSE clients.
+
+## Validation
+
+`src/services/codeValidator.service.ts` sanitizes model output and validates:
+
+- minimum generated length
+- escaped newline or quote artifacts
+- dangerous browser APIs and inline handlers
+- standalone document structure for full-page generations
+- Tailwind CDN presence when Tailwind utility classes are used
+- invalid Tailwind `scale-103` usage
+- external asset URL requirements
+- basic tag nesting
+
+Section edit requests allow HTML fragments.
+
+## Redis Responsibilities
+
+Redis supports:
+
+- generation rate limiting
+- prompt cache
+- job status checks
+- SSE reconnect buffer
+- Redis pub/sub notifications
+
+Generation paths use the runtime-checked `redis` proxy. If Redis is not
+configured, those paths throw a service-unavailable error.
+
+## Persistence
+
+MongoDB stores:
+
+- generation request metadata
+- augmented prompt
+- final output
+- status
+- duration and token count
+- error messages
+- section edit metadata
+
+Project `currentCode` is updated after a successful generation or cache hit.
+Project and generation access is scoped by authenticated user ID.
+
+## Failure Behavior
+
+- RAG failures are non-fatal and fall back to the plain prompt.
+- Bedrock failures are retried and then handled by the queue processor.
+- Validation failures mark the generation failed and publish an SSE error signal.
+- Failure persistence is attempted but logged if that persistence fails.
+- SSE disconnects clean up heartbeat timers and Redis subscriber connections.

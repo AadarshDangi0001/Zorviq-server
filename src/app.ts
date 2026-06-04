@@ -4,7 +4,7 @@ import morgan from 'morgan';
 import cors from 'cors';
 import helmet from 'helmet';
 import passport from 'passport';
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { config, isGoogleAuthConfigured } from './config/env.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import authRouter from './routes/auth.routes.js';
@@ -27,13 +27,15 @@ export function createApp() {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({
-    origin: (origin, callback) => {
-      callback(null, isAllowedFrontendOrigin(origin));
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    credentials: true,
-  }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        callback(null, isAllowedFrontendOrigin(origin));
+      },
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+      credentials: true,
+    })
+  );
   if (config.NODE_ENV !== 'production') {
     app.use(morgan('dev'));
   }
@@ -53,8 +55,8 @@ export function createApp() {
         },
         (_accessToken, _refreshToken, profile, done) => {
           return done(null, profile);
-        },
-      ),
+        }
+      )
     );
   }
 
@@ -62,7 +64,7 @@ export function createApp() {
   app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok', uptime: process.uptime() });
   });
-  
+
   app.use('/api/auth', authRouter);
   app.use('/api/projects', projectRouter);
   app.use('/api/generate', generateRouter);

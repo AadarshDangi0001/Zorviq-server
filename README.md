@@ -34,7 +34,8 @@ Required:
 Recommended for full production behavior:
 
 - `REDIS_URL` or `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`: Redis connection
-- `RESEND_API_KEY`: transactional email provider key
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: SMTP email
+  delivery settings
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`: Google OAuth
 - `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL`: GitHub OAuth
   for repository deploy (create repo and push generated project files)
@@ -46,7 +47,7 @@ Recommended for full production behavior:
 - `GEMINI_API_KEY`: embeddings for RAG and generated-code pattern analysis
 - `PINECONE_API_KEY`, `PINECONE_INDEX_HOST`: RAG and pattern-analysis search
 
-For local tests, email delivery is skipped with `RESEND_SKIP_EMAIL=true`.
+For local tests, email delivery is skipped with `SMTP_SKIP_EMAIL=true`.
 
 ## Commands
 

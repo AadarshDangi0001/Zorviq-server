@@ -1,8 +1,19 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { config } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 
-const resend = new Resend(config.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: config.SMTP_HOST,
+  port: config.SMTP_PORT,
+  secure: config.SMTP_SECURE,
+  auth:
+    config.SMTP_USER && config.SMTP_PASS
+      ? {
+          user: config.SMTP_USER,
+          pass: config.SMTP_PASS,
+        }
+      : undefined,
+});
 
 type SendEmailOptions = {
   to: string | string[];
@@ -12,20 +23,20 @@ type SendEmailOptions = {
 
 export const sendEmail = async ({ to, subject, html }: SendEmailOptions) => {
   try {
-    if (process.env.RESEND_SKIP_EMAIL === 'true') {
+    if (process.env.SMTP_SKIP_EMAIL === 'true') {
       logger.info('mail.skipped', { to, subject });
       return { skipped: true } as const;
     }
 
-    if (!config.RESEND_API_KEY) {
-      throw new Error('RESEND_API_KEY is not configured');
+    if (!config.SMTP_HOST || !config.SMTP_FROM) {
+      throw new Error('SMTP_HOST and SMTP_FROM must be configured');
     }
 
-    const devRecipient = process.env.RESEND_TEST_RECIPIENT?.trim();
+    const devRecipient = process.env.SMTP_TEST_RECIPIENT?.trim();
     const finalRecipient = config.NODE_ENV === 'development' && devRecipient ? devRecipient : to;
 
-    const data = await resend.emails.send({
-      from: 'onboarding@resend.dev',
+    const data = await transporter.sendMail({
+      from: config.SMTP_FROM,
       to: finalRecipient,
       subject,
       html,

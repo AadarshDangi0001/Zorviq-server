@@ -8,6 +8,7 @@ import { logger } from '../lib/logger.js';
 import { CodeValidatorService } from '../services/codeValidator.service.js';
 import { embeddingAnalysisService } from '../services/embeddingAnalysis.service.js';
 import { CACHE_KEYS, cacheService } from '../services/cache.service.js';
+import { projectMemoryService } from '../services/projectMemory.service.js';
 
 export interface GenerationJobData {
   generationId: string;
@@ -19,6 +20,7 @@ export interface GenerationJobData {
   sectionId: string | null;
   sectionHtml: string | null;
   currentCode: string | null; // needed for section replacement
+  memorySignature: string | null;
 }
 
 export const REDIS_KEYS = {
@@ -39,6 +41,7 @@ export interface PromptCacheScope {
   projectId: string;
   currentCode?: string | null;
   sectionHtml?: string | null;
+  memorySignature?: string | null;
 }
 
 function hashNullable(value?: string | null): string | null {
@@ -63,6 +66,7 @@ export function buildRequestHash(
         sectionId: sectionId ?? null,
         currentCodeHash: hashNullable(scope.currentCode),
         sectionHtmlHash: hashNullable(scope.sectionHtml),
+        memorySignature: scope.memorySignature ?? null,
       })
     )
     .digest('hex');
@@ -216,6 +220,7 @@ export async function processGenerationJob(job: GenerationJobData): Promise<void
     sectionId,
     sectionHtml,
     currentCode,
+    memorySignature,
   } = job;
 
   const channel = REDIS_KEYS.jobChannel(generationId);
@@ -308,6 +313,7 @@ export async function processGenerationJob(job: GenerationJobData): Promise<void
           projectId,
           currentCode,
           sectionHtml,
+          memorySignature,
         }),
         finalCode,
         'EX',
@@ -340,6 +346,24 @@ export async function processGenerationJob(job: GenerationJobData): Promise<void
       isSectionEdit,
       embeddingAnalysisEnabled: analysis.enabled,
     });
+
+    await projectMemoryService
+      .rememberGeneration({
+        generationId,
+        userId,
+        projectId,
+        prompt: originalPrompt,
+        output: finalCode,
+        isSectionEdit,
+        sectionId,
+      })
+      .catch((memoryErr) => {
+        logger.warn('generation.memory_upsert_failed', {
+          generationId,
+          projectId,
+          error: memoryErr,
+        });
+      });
   } catch (err: unknown) {
     const durationMs = Date.now() - startTime;
     const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';

@@ -85,7 +85,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 
   await authService.verifyUserEmail(token);
 
-  res.json({ message: 'Email verified successfully', success: true });
+  res.redirect(`${getFrontendUrl(req)}/login`);
 });
 
 /**

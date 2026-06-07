@@ -96,7 +96,7 @@ export const registerUser = async (
     email,
     password,
     fullname,
-    contact,
+    contact: contact?.trim() || undefined,
     verified: false,
   });
 

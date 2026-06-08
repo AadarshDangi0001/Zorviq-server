@@ -140,9 +140,15 @@ export async function streamGeneration(
 
   await subscriber.subscribe(REDIS_KEYS.jobChannel(jobId));
 
-  subscriber.on('message', (_channel: string, message: string) => {
+  subscriber.on('message', async (_channel: string, message: string) => {
     if (message === '__DONE__') {
-      send('done');
+      try {
+        const output = await generationRepository.getOutput(jobId, userId);
+        send('done', { code: output });
+      } catch (err) {
+        logger.error('sse.done_get_output_failed', { jobId, error: err });
+        send('done');
+      }
       cleanup();
       close();
       return;

@@ -16,7 +16,7 @@ const enqueueSchema = z
     sectionId: z
       .string()
       .trim()
-      .regex(/^[a-z0-9-]+$/, 'sectionId must be lowercase alphanumeric with hyphens')
+      .regex(/^[a-zA-Z0-9-_]+$/, 'sectionId must be alphanumeric with hyphens or underscores')
       .optional()
       .nullable()
       .default(null),

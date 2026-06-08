@@ -137,7 +137,7 @@ export class CodeValidatorService {
 
     const usesTailwind = this.usesTailwindClasses(trimmed);
     const hasTailwindCdn = /cdn\.tailwindcss\.com/i.test(trimmed);
-    if (usesTailwind && !hasTailwindCdn) {
+    if (usesTailwind && !hasTailwindCdn && !options.allowFragment) {
       errors.push('Tailwind utility classes are present but Tailwind CDN is missing.');
     }
 

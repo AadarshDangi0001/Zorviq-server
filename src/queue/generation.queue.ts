@@ -242,9 +242,33 @@ export async function processGenerationJob(job: GenerationJobData): Promise<void
       { fullOutput: string; tokenCount: number; durationMs: number }
     >;
 
+    let tokenBuffer = '';
+    let lastPublishTime = Date.now();
+    const chunkIntervalMs = 2000;
+
     while (!(iterResult = await streamGen.next()).done) {
       const token = iterResult.value as string;
       fullOutput += token;
+      tokenBuffer += token;
+
+      const now = Date.now();
+      if (now - lastPublishTime >= chunkIntervalMs) {
+        const chunkToSend = tokenBuffer;
+        tokenBuffer = '';
+        lastPublishTime = now;
+        
+        await Promise.all([
+          redis.publish(channel, chunkToSend),
+          redis.rpush(REDIS_KEYS.jobBuffer(generationId), chunkToSend),
+        ]);
+      }
+    }
+
+    if (tokenBuffer.length > 0) {
+      await Promise.all([
+        redis.publish(channel, tokenBuffer),
+        redis.rpush(REDIS_KEYS.jobBuffer(generationId), tokenBuffer),
+      ]);
     }
 
     // Extract metadata from generator return value
@@ -324,13 +348,6 @@ export async function processGenerationJob(job: GenerationJobData): Promise<void
       redis.set(REDIS_KEYS.jobStatus(generationId), 'done', 'EX', CACHE_TTL.job),
 
       // Set TTL on token buffer (no longer needed after done)
-      redis.expire(REDIS_KEYS.jobBuffer(generationId), CACHE_TTL.job),
-    ]);
-
-    // Publish only validated HTML to active and reconnecting SSE clients.
-    await Promise.all([
-      redis.publish(channel, finalCode),
-      redis.rpush(REDIS_KEYS.jobBuffer(generationId), finalCode),
       redis.expire(REDIS_KEYS.jobBuffer(generationId), CACHE_TTL.job),
     ]);
 

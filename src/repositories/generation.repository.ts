@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import type { IGeneration, GenerationStatus } from '../models/Generation.model.js';
 import { Generation } from '../models/Generation.model.js';
 import { logger } from '../lib/logger.js';
+import type { GenerationMemoryRecord } from '../services/projectMemory.service.js';
 
 export interface CreateGenerationDTO {
   projectId: string;
@@ -127,6 +128,23 @@ export class GenerationRepository {
    */
   async findRecentByProject(projectId: string, limit = 10): Promise<IGeneration[]> {
     return Generation.findRecentByProject(projectId, limit);
+  }
+
+  async findMemoryByProject(
+    projectId: string,
+    userId: string,
+    limit = 6
+  ): Promise<GenerationMemoryRecord[]> {
+    return Generation.find({
+      projectId: new Types.ObjectId(projectId),
+      userId: new Types.ObjectId(userId),
+      archived: false,
+    })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select('prompt output status isSectionEdit sectionId createdAt updatedAt')
+      .lean<GenerationMemoryRecord[]>()
+      .exec();
   }
 
   /**

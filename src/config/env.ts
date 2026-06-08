@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const requiredVars = ['MONGO_URI', 'JWT_SECRET', 'FRONTEND_ORIGINS'];
+const requiredVars = ['MONGO_URI', 'JWT_SECRET'];
 for (const name of requiredVars) {
   // The key list is hard-coded above; dynamic access keeps the validation loop compact.
   // eslint-disable-next-line security/detect-object-injection
@@ -13,7 +13,7 @@ for (const name of requiredVars) {
 
 export const config = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
-  PORT: Number(process.env.PORT ?? 4000),
+  PORT: Number(process.env.PORT ?? 3000),
   MONGO_URI: process.env.MONGO_URI ?? '',
   REDIS_URL: process.env.REDIS_URL ?? '',
   REDIS_HOST: process.env.REDIS_HOST ?? '',
@@ -33,17 +33,19 @@ export const config = {
   PINECONE_INDEX_HOST: process.env.PINECONE_INDEX_HOST ?? '',
   PINECONE_NAMESPACE: process.env.PINECONE_NAMESPACE ?? 'code-pattern-errors',
   PINECONE_COMPONENT_NAMESPACE: process.env.PINECONE_COMPONENT_NAMESPACE ?? 'components',
-  PINECONE_API_VERSION: process.env.PINECONE_API_VERSION ?? '2026-04',
+  PINECONE_MEMORY_NAMESPACE: process.env.PINECONE_MEMORY_NAMESPACE ?? 'project-memory',
+  PINECONE_API_VERSION: process.env.PINECONE_API_VERSION ?? '2025-10',
   PINECONE_PATTERN_THRESHOLD: Number(process.env.PINECONE_PATTERN_THRESHOLD ?? 0.78),
   PINECONE_COMPONENT_THRESHOLD: Number(process.env.PINECONE_COMPONENT_THRESHOLD ?? 0.72),
+  PINECONE_MEMORY_THRESHOLD: Number(process.env.PINECONE_MEMORY_THRESHOLD ?? 0.68),
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? '',
   GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL ?? '',
   GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID ?? '',
   GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET ?? '',
   GITHUB_CALLBACK_URL: process.env.GITHUB_CALLBACK_URL ?? '',
-  FRONTEND_ORIGINS: process.env.FRONTEND_ORIGINS ?? '',
-  LOCAL_FRONTEND_URL: process.env.LOCAL_FRONTEND_URL ?? 'http://localhost:3000',
+  FRONTEND_ORIGINS: process.env.FRONTEND_ORIGINS ?? 'http://localhost:8080',
+  LOCAL_FRONTEND_URL: process.env.LOCAL_FRONTEND_URL ?? 'http://localhost:8080',
   FRONTEND_URL:
     process.env.FRONTEND_URL || (process.env.FRONTEND_ORIGINS ?? '').split(',')[0]?.trim() || '',
 };

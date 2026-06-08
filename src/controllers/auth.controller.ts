@@ -85,7 +85,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 
   await authService.verifyUserEmail(token);
 
-  res.json({ message: 'Email verified successfully', success: true });
+  res.redirect(`${getFrontendUrl(req)}/login`);
 });
 
 /**
@@ -158,7 +158,7 @@ export const googleCallback = asyncHandler(async (req, res) => {
   const { token } = await authService.handleGoogleAuth(profile);
 
   res.cookie('token', token, getAuthCookieOptions(req));
-  res.redirect(getFrontendUrl(req));
+  res.redirect(`${getFrontendUrl(req)}/dashboard`);
 });
 
 /**

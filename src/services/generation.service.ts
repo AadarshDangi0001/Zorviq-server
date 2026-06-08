@@ -13,6 +13,7 @@ import {
 import { ragService, type RagService } from './rag.service.js';
 import { rateLimiterService, type RateLimiterService } from './rateLimiter.service.js';
 import { CACHE_KEYS, cacheService } from './cache.service.js';
+import { buildProjectMemoryContext, projectMemoryService } from './projectMemory.service.js';
 import { logger } from '../lib/logger.js';
 import {
   NotFoundError,
@@ -110,7 +111,29 @@ export class GenerationService {
       projectId,
       currentCode: project.currentCode ?? null,
       sectionHtml,
+      memorySignature: null as string | null,
     };
+
+    const recentMemoryRecords = await generationRepository.findMemoryByProject(projectId, userId);
+    const memoryQueryText = [
+      trimmedPrompt,
+      project.currentCode ?? '',
+      ...recentMemoryRecords.map((record) => record.prompt),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const semanticMemories = await projectMemoryService.retrieveRelevantMemories(
+      userId,
+      projectId,
+      memoryQueryText
+    );
+    const memory = buildProjectMemoryContext({
+      currentCode: project.currentCode ?? null,
+      recentGenerations: recentMemoryRecords,
+      semanticMemories,
+    });
+    cacheScope.memorySignature = memory.signature;
+
     const requestHash = buildRequestHash(trimmedPrompt, isSectionEdit, sectionId, cacheScope);
     const cacheKey = buildPromptCacheKey(trimmedPrompt, isSectionEdit, sectionId, cacheScope);
     const cachedOutput = await redis.get(cacheKey);
@@ -129,7 +152,7 @@ export class GenerationService {
         projectId,
         userId,
         prompt: trimmedPrompt,
-        augmentedPrompt: trimmedPrompt, // no RAG needed for cached
+        augmentedPrompt: this.buildPromptWithMemory(trimmedPrompt, memory.context),
         isSectionEdit,
         sectionId,
         sectionHtml,
@@ -151,6 +174,24 @@ export class GenerationService {
         redis.set(REDIS_KEYS.jobStatus(gen._id.toString()), 'done', 'EX', CACHE_TTL.job),
       ]);
 
+      await projectMemoryService
+        .rememberGeneration({
+          generationId: gen._id.toString(),
+          userId,
+          projectId,
+          prompt: trimmedPrompt,
+          output: cachedOutput,
+          isSectionEdit,
+          sectionId,
+        })
+        .catch((memoryErr) => {
+          logger.warn('generation.cached_memory_upsert_failed', {
+            generationId: gen._id.toString(),
+            projectId,
+            error: memoryErr,
+          });
+        });
+
       return {
         jobId: gen._id.toString(),
         status: 'done',
@@ -169,21 +210,26 @@ export class GenerationService {
     // ── 7. RAG retrieval — fetch similar components ──────────────────────
     let augmentedPrompt: string;
     let ragChunksUsed = 0;
+    const promptWithMemory = this.buildPromptWithMemory(trimmedPrompt, memory.context);
+    const retrievalQuery = [trimmedPrompt, memory.searchText].filter(Boolean).join('\n');
 
     try {
-      const chunks = await this.rag.retrieveComponents(trimmedPrompt);
+      const chunks = await this.rag.retrieveComponents(retrievalQuery);
       ragChunksUsed = chunks.length;
-      augmentedPrompt = this.rag.buildAugmentedPrompt(trimmedPrompt, chunks);
+      augmentedPrompt = this.rag.buildAugmentedPrompt(promptWithMemory, chunks);
 
       // For section edits: prepend the current section HTML
       if (isSectionEdit && sectionHtml) {
-        augmentedPrompt = this.buildSectionEditPrompt(trimmedPrompt, sectionHtml, augmentedPrompt);
+        augmentedPrompt = this.buildSectionEditPrompt(sectionHtml, augmentedPrompt);
       }
 
       logger.info('generation.rag_complete', {
         userId,
         promptLength: trimmedPrompt.length,
         ragChunks: ragChunksUsed,
+        memoryRecentTurns: memory.recentCount,
+        memorySemanticTurns: memory.semanticCount,
+        memoryCurrentCodeIncluded: memory.currentCodeIncluded,
         augmentedLength: augmentedPrompt.length,
       });
     } catch (ragErr) {
@@ -195,8 +241,11 @@ export class GenerationService {
       });
       augmentedPrompt =
         isSectionEdit && sectionHtml
-          ? this.buildSectionEditPrompt(trimmedPrompt, sectionHtml, trimmedPrompt)
-          : trimmedPrompt;
+          ? this.buildSectionEditPrompt(
+              sectionHtml,
+              this.rag.buildAugmentedPrompt(promptWithMemory, [])
+            )
+          : this.rag.buildAugmentedPrompt(promptWithMemory, []);
     }
 
     // ── 8. Create generation record ──────────────────────────────────────
@@ -227,6 +276,7 @@ export class GenerationService {
       sectionId,
       sectionHtml,
       currentCode: project.currentCode ?? null,
+      memorySignature: memory.signature,
     };
 
     await enqueueGeneration(jobData);
@@ -290,23 +340,22 @@ export class GenerationService {
     return generationRepository.findRecentByProject(projectId, limit);
   }
 
-  private buildSectionEditPrompt(
-    instruction: string,
-    currentSectionHtml: string,
-    ragContext: string
-  ): string {
+  private buildPromptWithMemory(instruction: string, memoryContext: string): string {
+    if (!memoryContext) return instruction;
+
+    return [memoryContext, '', '--- Latest user request ---', instruction].join('\n');
+  }
+
+  private buildSectionEditPrompt(currentSectionHtml: string, augmentedPrompt: string): string {
     return [
       '[SECTION_EDIT]',
       '',
       'Current section HTML (the section you must modify):',
       currentSectionHtml,
       '',
-      'Edit instruction:',
-      instruction,
+      'Modify only this section unless the latest user request explicitly requires broader changes.',
       '',
-      ...(ragContext !== instruction
-        ? ['Reference components for layout/styling inspiration:', ragContext]
-        : []),
+      augmentedPrompt,
     ].join('\n');
   }
 }

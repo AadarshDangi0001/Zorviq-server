@@ -30,7 +30,7 @@ export const getVerificationEmail = (verifyUrl: string) =>
   <div style="text-align: center; margin: 32px 0;">
     <a href="${verifyUrl}" style="background-color: ${primaryColor}; color: #080808; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">Verify Email</a>
   </div>
-  <p style="font-size: 14px; color: #849495;">If the button doesn't work, copy and paste this link: <br/> <span style="word-break: break-all;">${verifyUrl}</span></p>
+  <p style="font-size: 14px; color: #849495;">For your privacy, do not share or forward this verification email.</p>
   <p style="font-size: 14px; color: #849495; margin-top: 20px;">This link expires in 1 hour.</p>
 `);
 

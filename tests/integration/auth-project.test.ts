@@ -32,7 +32,11 @@ const registerPayload = (email = 'user@example.com') => ({
 const verifyEmail = async (email: string) => {
   const token = jwt.sign({ email }, jwtSecret, { expiresIn: '1h' });
 
-  await request(app).get('/api/auth/verify-email').query({ token }).expect(200);
+  await request(app)
+    .get('/api/auth/verify-email')
+    .query({ token })
+    .expect(302)
+    .expect('Location', 'http://localhost:8080/login');
 };
 
 const createVerifiedUser = async (

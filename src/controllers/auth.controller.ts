@@ -158,7 +158,7 @@ export const googleCallback = asyncHandler(async (req, res) => {
   const { token } = await authService.handleGoogleAuth(profile);
 
   res.cookie('token', token, getAuthCookieOptions(req));
-  res.redirect(`${getFrontendUrl(req)}/dashboard`);
+  res.redirect(`${getFrontendUrl(req)}/`);
 });
 
 /**

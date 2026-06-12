@@ -228,7 +228,7 @@ const createRepositoryWithRetry = async (
         name,
         description,
         private: isPrivate,
-        auto_init: false,
+        auto_init: true,
       });
 
       return {
@@ -289,11 +289,12 @@ const pushInitialCommit = async (
     tree: tree.sha,
   });
 
-  await octokit.git.createRef({
+  await octokit.git.updateRef({
     owner,
     repo,
-    ref: 'refs/heads/main',
+    ref: 'heads/main',
     sha: commit.sha,
+    force: true,
   });
 };
 

@@ -18,7 +18,7 @@ import {
 } from '../controllers/auth.controller.js';
 import passport from 'passport';
 import type { RequestHandler } from 'express';
-import { config, isGoogleAuthConfigured } from '../config/env.js';
+import { config, isGoogleAuthConfigured, getBackendUrl } from '../config/env.js';
 import { authenticateUser } from '../middleware/auth.middleware.js';
 
 const authRouter = Router();
@@ -76,9 +76,13 @@ authRouter.post('/reset-password', validateResetPassword, resetPassword);
 if (isGoogleAuthConfigured) {
   authRouter.get(
     '/google',
-    passport.authenticate('google', {
-      scope: ['profile', 'email'],
-    })
+    (req, res, next) => {
+      const callbackURL = `${getBackendUrl(req)}/api/auth/google/callback`;
+      passport.authenticate('google', {
+        scope: ['profile', 'email'],
+        callbackURL,
+      })(req, res, next);
+    }
   );
 } else {
   authRouter.get('/google', googleAuthNotConfigured);
@@ -92,13 +96,17 @@ if (isGoogleAuthConfigured) {
 if (isGoogleAuthConfigured) {
   authRouter.get(
     '/google/callback',
-    passport.authenticate('google', {
-      session: false,
-      failureRedirect:
-        config.NODE_ENV === 'development'
-          ? `${config.LOCAL_FRONTEND_URL}/login`
-          : `${config.FRONTEND_URL}/login`,
-    }),
+    (req, res, next) => {
+      const callbackURL = `${getBackendUrl(req)}/api/auth/google/callback`;
+      passport.authenticate('google', {
+        session: false,
+        failureRedirect:
+          config.NODE_ENV === 'development'
+            ? `${config.LOCAL_FRONTEND_URL}/login`
+            : `${config.FRONTEND_URL}/login`,
+        callbackURL,
+      })(req, res, next);
+    },
     googleCallback
   );
 } else {

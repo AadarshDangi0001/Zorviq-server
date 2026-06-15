@@ -155,10 +155,15 @@ export const resetPassword = asyncHandler(async (req, res) => {
 export const googleCallback = asyncHandler(async (req, res) => {
   const profile = req.user as GoogleProfile | undefined;
 
-  const { token } = await authService.handleGoogleAuth(profile);
+  try {
+    const { token } = await authService.handleGoogleAuth(profile);
 
-  res.cookie('token', token, getAuthCookieOptions(req));
-  res.redirect(`${getFrontendUrl(req)}/`);
+    res.cookie('token', token, getAuthCookieOptions(req));
+    res.redirect(`${getFrontendUrl(req)}/auth/callback?token=${token}`);
+  } catch (error) {
+    const message = error instanceof Error ? encodeURIComponent(error.message) : 'Google auth failed';
+    res.redirect(`${getFrontendUrl(req)}/login?error=${message}`);
+  }
 });
 
 /**

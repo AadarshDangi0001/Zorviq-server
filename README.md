@@ -8,7 +8,7 @@ Backend API for **Zorviq**, an AI-powered website generation platform. This serv
 
 ---
 
-## Features
+## Features of zorviq
 
 ### AI Website Generation
 
@@ -323,7 +323,7 @@ src/
 ```
 
 ---
-
+ 
 ## Security Features
 
 * JWT Authentication

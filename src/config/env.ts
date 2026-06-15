@@ -60,7 +60,7 @@ export const getFrontendUrl = (req?: { headers?: { origin?: string } }) => {
     return requestOrigin;
   }
 
-  if (config.NODE_ENV === 'development') {
+  if (config.NODE_ENV === 'development' || config.NODE_ENV === 'test') {
     return config.LOCAL_FRONTEND_URL;
   }
 
@@ -70,7 +70,7 @@ export const getFrontendUrl = (req?: { headers?: { origin?: string } }) => {
 export const getBackendUrl = (req?: {
   headers?: { host?: string; 'x-forwarded-proto'?: string };
 }) => {
-  if (config.NODE_ENV === 'development') {
+  if (config.NODE_ENV === 'development' || config.NODE_ENV === 'test') {
     return `http://localhost:${config.PORT}`;
   }
 

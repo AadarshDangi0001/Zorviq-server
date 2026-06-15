@@ -1,142 +1,360 @@
 # Zorviq Server
 
-Backend API for Zorviq, an AI website generation platform with authentication,
-project management, queued generation, SSE updates, caching, validation, and ZIP
-exports.
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 
-## Requirements
+Backend API for **Zorviq**, an AI-powered website generation platform. This server manages authentication, project management, AI generation workflows, real-time streaming, RAG-based validation, and project exports.
 
-- Node.js 18 or newer
-- npm
-- MongoDB
-- Redis for generation rate limiting, cache, SSE status/pub-sub, reconnect
-  buffers, and token blocklist behavior
+---
 
-## Setup
+## Features
+
+### AI Website Generation
+
+* Converts natural language prompts into fully functional websites.
+* Powered by AWS Bedrock (Nova Pro).
+* Generates clean HTML and Tailwind CSS code.
+
+### Real-Time Updates
+
+* Server-Sent Events (SSE) for live generation progress.
+* Redis Pub/Sub for efficient event broadcasting.
+* Instant frontend synchronization.
+
+### RAG & Pattern Intelligence
+
+* Pinecone vector database integration.
+* Google Gemini embeddings.
+* Code pattern retrieval and memory injection.
+* AI-generated code validation and optimization.
+
+### Queue Management
+
+* Background job processing with `p-queue`.
+* Redis-backed caching and rate limiting.
+* Reliable generation workflow management.
+
+### Authentication & Security
+
+* JWT authentication.
+* Email/password login.
+* Google OAuth integration.
+* GitHub OAuth integration.
+* Token blocklisting with Redis.
+
+### Export & Deployment
+
+* Export generated projects as ZIP archives.
+* Deploy directly to GitHub repositories.
+* Version-controlled project management.
+
+---
+
+## Tech Stack
+
+| Category        | Technology             |
+| --------------- | ---------------------- |
+| Runtime         | Node.js (v18+)         |
+| Language        | TypeScript             |
+| Framework       | Express.js             |
+| Database        | MongoDB + Mongoose     |
+| Cache / PubSub  | Redis + ioredis        |
+| AI Model        | AWS Bedrock (Nova Pro) |
+| Embeddings      | Google Gemini          |
+| Vector Database | Pinecone               |
+| Validation      | Zod, Express Validator |
+| Testing         | Vitest, Supertest      |
+
+---
+
+## Prerequisites
+
+Before running the project, ensure you have:
+
+* Node.js v18 or later
+* npm
+* MongoDB (Local or Atlas)
+* Redis Server
+
+---
+
+## Getting Started
+
+### 1. Clone Repository
+
+```bash
+git clone https://github.com/AadarshDangi0001/Zorviq-server.git
+cd Zorviq-server
+```
+
+### 2. Install Dependencies
 
 ```bash
 npm install
+```
+
+### 3. Configure Environment Variables
+
+Copy the example environment file:
+
+```bash
 cp .env.example .env
+```
+
+Fill in all required credentials and API keys.
+
+### 4. Build Project
+
+```bash
 npm run build
+```
+
+### 5. Start Development Server
+
+```bash
 npm run dev
 ```
 
-If `.env.example` is not present, create `.env` with the variables below.
+Server will start on:
+
+```bash
+http://localhost:3000
+```
+
+---
 
 ## Environment Variables
 
-Required:
+### Core Configuration
 
-- `MONGO_URI`: MongoDB connection string
-- `JWT_SECRET`: secret used to sign auth and email verification tokens
-- `FRONTEND_ORIGINS`: comma-separated allowed frontend origins
-
-Recommended for full production behavior:
-
-- `REDIS_URL` or `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`: Redis connection
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: SMTP email
-  delivery settings
-- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`: Google OAuth
-- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL`: GitHub OAuth
-  for repository deploy (create repo and push generated project files)
-- `LOCAL_FRONTEND_URL`: local frontend URL used in development links
-- `FRONTEND_URL`: production frontend URL
-- `AWS_REGION`, `BEDROCK_MODEL_ID`, `BEDROCK_INFERENCE_PROFILE_ID`: Bedrock
-  generation configuration
-- AWS credentials through the standard AWS SDK provider chain
-- `GEMINI_API_KEY`, `GEMINI_EMBEDDING_MODEL`, `GEMINI_EMBEDDING_DIMENSIONS`:
-  embeddings for RAG and generated-code pattern analysis
-- `PINECONE_API_KEY`, `PINECONE_INDEX_HOST`, `PINECONE_COMPONENT_NAMESPACE`,
-  `PINECONE_NAMESPACE`: RAG and pattern-analysis vector search
-
-For local tests, email delivery is skipped with `SMTP_SKIP_EMAIL=true`.
-
-## Commands
-
-```bash
-npm run dev       # build and run the local server with nodemon
-npm run build     # compile TypeScript to dist
-npm run lint      # run ESLint
-npm run format    # format files with Prettier
-npm start         # run the compiled production server
-npm test          # run integration validation tests
-npm run test:watch
+```env
+NODE_ENV=development
+PORT=3000
+FRONTEND_ORIGINS=http://localhost:5173
+MONGO_URI=
+JWT_SECRET=
 ```
 
-The integration tests use Vitest, Supertest, and MongoDB Memory Server. In
-restricted sandboxes, `npm test` may need permission to start the local in-memory
-MongoDB listener.
+### Redis
+
+```env
+REDIS_URL=
+```
+
+or
+
+```env
+REDIS_HOST=
+REDIS_PORT=
+REDIS_PASSWORD=
+```
+
+### AWS Bedrock
+
+```env
+AWS_REGION=
+BEDROCK_MODEL_ID=
+BEDROCK_INFERENCE_PROFILE_ID=
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+```
+
+### Google Gemini
+
+```env
+GEMINI_API_KEY=
+GEMINI_EMBEDDING_MODEL=
+GEMINI_EMBEDDING_DIMENSIONS=
+```
+
+### Pinecone
+
+```env
+PINECONE_API_KEY=
+PINECONE_INDEX_HOST=
+PINECONE_API_VERSION=
+PINECONE_NAMESPACE=
+PINECONE_COMPONENT_NAMESPACE=
+PINECONE_MEMORY_NAMESPACE=
+```
+
+### SMTP
+
+```env
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+SMTP_SKIP_EMAIL=true
+```
+
+### Google OAuth
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=
+```
+
+### GitHub OAuth
+
+```env
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GITHUB_CALLBACK_URL=
+```
+
+---
 
 ## Architecture
 
-Detailed architecture notes are in [docs/architecture.md](docs/architecture.md).
-
 ```text
 Client
-  -> Express API
-  -> Auth, project, generation, export controllers
-  -> Services and repositories
-  -> Queue, cache, RAG, LLM, validation
-  -> MongoDB and Redis
+   │
+   ▼
+Routes & Middleware
+   │
+   ▼
+Controllers
+   │
+   ▼
+Services Layer
+   ├── LLM Service (AWS Bedrock)
+   ├── RAG Service (Pinecone)
+   ├── Project Memory
+   └── Auth Service
+   │
+   ▼
+Queue Worker (p-queue)
+   │
+   ▼
+Redis Pub/Sub
+   │
+   ▼
+SSE Stream
+   │
+   ▼
+Frontend
 ```
 
-## API Overview
+### Flow Overview
 
-Authentication:
+1. Request received through routes.
+2. Validation and authentication middleware execute.
+3. Controllers trigger service operations.
+4. AI generation is queued.
+5. RAG validation and optimization occur.
+6. Results are published through Redis.
+7. SSE streams updates to clients in real time.
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/get-me`
-- `GET /api/auth/verify-email`
-- `POST /api/auth/resend-verification`
-- `POST /api/auth/forgot-password`
-- `POST /api/auth/reset-password`
-- `GET /api/auth/google`
-- `GET /api/auth/google/callback`
+---
 
-Projects:
+## API Endpoints
 
-- `GET /api/projects`
-- `POST /api/projects`
-- `GET /api/projects/:id`
-- `PATCH /api/projects/:id`
-- `DELETE /api/projects/:id`
+### Authentication
 
-Generation:
+| Method | Endpoint             | Description          |
+| ------ | -------------------- | -------------------- |
+| POST   | `/api/auth/register` | Register user        |
+| POST   | `/api/auth/login`    | Login user           |
+| POST   | `/api/auth/logout`   | Logout user          |
+| GET    | `/api/auth/get-me`   | Current user profile |
+| GET    | `/api/auth/google`   | Google OAuth login   |
 
-- `POST /api/generate`
-- `GET /api/generate/status/:jobId`
-- `GET /api/generate/history/:projectId`
-- `GET /api/generate/stream/:jobId`
+### Projects
 
-Export:
+| Method | Endpoint            |
+| ------ | ------------------- |
+| GET    | `/api/projects`     |
+| POST   | `/api/projects`     |
+| GET    | `/api/projects/:id` |
+| PATCH  | `/api/projects/:id` |
+| DELETE | `/api/projects/:id` |
 
-- `GET /api/export/:projectId`
+### Generation
 
-Health:
+| Method | Endpoint                           |
+| ------ | ---------------------------------- |
+| POST   | `/api/generate`                    |
+| GET    | `/api/generate/status/:jobId`      |
+| GET    | `/api/generate/history/:projectId` |
+| GET    | `/api/generate/stream/:jobId`      |
 
-- `GET /health`
+### Export & Integrations
 
-## Current Validation Coverage
+| Method | Endpoint                 |
+| ------ | ------------------------ |
+| GET    | `/api/export/:projectId` |
+| GET    | `/api/github/callback`   |
 
-The first production-readiness test slice covers:
+---
 
-- Registration stores users, hashes passwords, strips passwords from responses,
-  and rejects duplicate email
-- Login rejects unverified users and invalid credentials, issues JWTs for verified
-  users, and authorizes protected endpoints
-- Password reset rejects expired tokens, updates the password, rejects the old
-  password, and accepts the new password
-- Google OAuth service creates verified users and reuses existing accounts
-- Project create, read, update, and delete works for the owner
-- Cross-user project read, update, and delete attempts are blocked
+## Available Scripts
 
-Still to validate:
+| Command              | Description                |
+| -------------------- | -------------------------- |
+| `npm run dev`        | Start development server   |
+| `npm run build`      | Build TypeScript project   |
+| `npm start`          | Start production server    |
+| `npm run lint`       | Run ESLint                 |
+| `npm run format`     | Format code using Prettier |
+| `npm test`           | Run tests                  |
+| `npm run test:watch` | Run tests in watch mode    |
 
-- Generation pipeline, including cache, validation, LLM failure handling, and
-  queue stress
-- SSE event ordering and connection cleanup
-- ZIP export integrity
-- Full user journey from registration through export
-- OpenAPI documentation and lint/format enforcement
+---
+
+## Project Structure
+
+```text
+src/
+├── config/
+├── controllers/
+├── middleware/
+├── models/
+├── routes/
+├── services/
+├── queue/
+├── validators/
+├── utils/
+├── types/
+└── app.ts
+```
+
+---
+
+## Security Features
+
+* JWT Authentication
+* OAuth Authentication
+* Redis Token Blocklisting
+* Request Validation
+* Rate Limiting
+* Protected Routes
+* Secure Environment Variables
+
+---
+
+## Future Enhancements
+
+* Multi-page website generation
+* Team collaboration
+* AI-powered deployment assistant
+* Custom component marketplace
+* Advanced template library
+* Version history and rollback
+
+---
+
+## License
+
+Licensed under the ISC License.
+
+---
+
+## Contributors
+
+Built for the **Zorviq AI Website Generation Platform**.
+
+Contributions, issues, and feature requests are welcome.

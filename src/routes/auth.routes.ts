@@ -81,7 +81,7 @@ if (isGoogleAuthConfigured) {
       passport.authenticate('google', {
         scope: ['profile', 'email'],
         callbackURL,
-      })(req, res, next);
+      } as any)(req, res, next);
     }
   );
 } else {
@@ -105,7 +105,7 @@ if (isGoogleAuthConfigured) {
             ? `${config.LOCAL_FRONTEND_URL}/login`
             : `${config.FRONTEND_URL}/login`,
         callbackURL,
-      })(req, res, next);
+      } as any)(req, res, next);
     },
     googleCallback
   );

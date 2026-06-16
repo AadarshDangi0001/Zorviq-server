@@ -43,7 +43,7 @@ export class RagService {
         .filter((hit) => (hit._score ?? 0) >= this.minScore)
         .map((hit) => hit.fields?.html ?? hit.fields?.code ?? hit.fields?.chunk_text ?? '')
         .filter((chunk) => chunk.trim().length > 0)
-        .slice(0, 5);
+        .slice(0, 3);
     } catch (error) {
       logger.warn('rag.retrieve_failed', { error });
       return [];

@@ -312,6 +312,7 @@ export class GenerationService {
   ): Promise<{
     status: string;
     output?: string | null;
+    tokenCount?: number | null;
   }> {
     const gen = await generationRepository.findById(generationId, userId);
     if (!gen) throw new NotFoundError('Generation not found.');
@@ -320,14 +321,14 @@ export class GenerationService {
     const redisStatus = await redis.get(REDIS_KEYS.jobStatus(generationId));
 
     if (redisStatus === 'done') {
-      return { status: 'done', output: gen.output };
+      return { status: 'done', output: gen.output, tokenCount: gen.tokenCount };
     }
 
     if (redisStatus === 'failed') {
       return { status: 'failed' };
     }
 
-    return { status: gen.status, output: gen.output };
+    return { status: gen.status, output: gen.output, tokenCount: gen.tokenCount };
   }
 
   /**

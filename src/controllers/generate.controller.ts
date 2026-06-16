@@ -171,7 +171,7 @@ export async function streamGeneration(
     if (!res.writableEnded) {
       res.write(': ping\n\n');
     }
-  }, 25_000);
+  }, 5_000);
 
   // ── 5. Cleanup on client disconnect ─────────────────────────────────
   const cleanup = (): void => {

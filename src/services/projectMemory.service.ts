@@ -64,11 +64,11 @@ interface PineconeQueryResponse {
   matches?: PineconeQueryMatch[];
 }
 
-const RECENT_TURNS = 6;
-const CURRENT_CODE_LIMIT = 150_000;
-const OUTPUT_EXCERPT_LIMIT = 1_200;
-const PROMPT_EXCERPT_LIMIT = 500;
-const MEMORY_TEXT_LIMIT = 8_000;
+const RECENT_TURNS = 3;
+const CURRENT_CODE_LIMIT = 50_000;
+const OUTPUT_EXCERPT_LIMIT = 800;
+const PROMPT_EXCERPT_LIMIT = 400;
+const MEMORY_TEXT_LIMIT = 4_000;
 const VECTOR_ID_PREFIX = 'project-memory';
 
 function normalize(value: string): string {

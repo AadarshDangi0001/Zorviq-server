@@ -104,8 +104,8 @@ export async function streamGeneration(
   const currentStatus = await redis.get(REDIS_KEYS.jobStatus(jobId));
 
   if (currentStatus === 'done') {
-    const output = await generationRepository.getOutput(jobId, userId);
-    send('done', { code: output });
+    const gen = await generationRepository.findById(jobId, userId);
+    send('done', { code: gen?.output ?? '', tokenCount: gen?.tokenCount ?? null });
     close();
     return;
   }
@@ -143,8 +143,8 @@ export async function streamGeneration(
   subscriber.on('message', async (_channel: string, message: string) => {
     if (message === '__DONE__') {
       try {
-        const output = await generationRepository.getOutput(jobId, userId);
-        send('done', { code: output });
+        const gen = await generationRepository.findById(jobId, userId);
+        send('done', { code: gen?.output ?? '', tokenCount: gen?.tokenCount ?? null });
       } catch (err) {
         logger.error('sse.done_get_output_failed', { jobId, error: err });
         send('done');

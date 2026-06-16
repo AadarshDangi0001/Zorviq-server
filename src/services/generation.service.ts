@@ -13,10 +13,7 @@ import {
 import { ragService, type RagService } from './rag.service.js';
 import { rateLimiterService, type RateLimiterService } from './rateLimiter.service.js';
 import { CACHE_KEYS, cacheService } from './cache.service.js';
-import {
-  buildProjectMemoryContext,
-  projectMemoryService,
-} from './projectMemory.service.js';
+import { buildProjectMemoryContext, projectMemoryService } from './projectMemory.service.js';
 import { logger } from '../lib/logger.js';
 import {
   NotFoundError,

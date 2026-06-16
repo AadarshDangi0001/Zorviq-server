@@ -25,22 +25,25 @@ describe('RAG Service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    ragService = new RagService();
-    
+
     // Store original fetch
     originalFetch = global.fetch;
-    
+
     // Mock fetch
     fetchMock = vi.fn();
-    global.fetch = fetchMock as any;
+    global.fetch = fetchMock as unknown as typeof fetch;
 
     // Mock config values
     vi.spyOn(envConfig.config, 'GEMINI_API_KEY', 'get').mockReturnValue('mock-gemini-key');
     vi.spyOn(envConfig.config, 'PINECONE_API_KEY', 'get').mockReturnValue('mock-pinecone-key');
-    vi.spyOn(envConfig.config, 'PINECONE_INDEX_HOST', 'get').mockReturnValue('https://pinecone.example.com');
+    vi.spyOn(envConfig.config, 'PINECONE_INDEX_HOST', 'get').mockReturnValue(
+      'https://pinecone.example.com'
+    );
     vi.spyOn(envConfig.config, 'PINECONE_COMPONENT_NAMESPACE', 'get').mockReturnValue('components');
-    vi.spyOn(envConfig.config, 'PINECONE_API_VERSION', 'get').mockReturnValue('2024-10');
+    vi.spyOn(envConfig.config, 'PINECONE_API_VERSION', 'get').mockReturnValue('2025-10');
     vi.spyOn(envConfig.config, 'PINECONE_COMPONENT_THRESHOLD', 'get').mockReturnValue(0.7);
+
+    ragService = new RagService();
   });
 
   afterEach(() => {
@@ -113,7 +116,10 @@ describe('RAG Service', () => {
 
   describe('retrieveComponents', () => {
     it('should return empty array when GEMINI_API_KEY is not configured', async () => {
-      vi.spyOn(envConfig.config, 'GEMINI_API_KEY', 'get').mockReturnValue(undefined as any);
+      vi.spyOn(envConfig.config, 'GEMINI_API_KEY', 'get').mockReturnValue(
+        undefined as unknown as string
+      );
+      ragService = new RagService();
 
       const result = await ragService.retrieveComponents('test prompt');
 
@@ -121,7 +127,10 @@ describe('RAG Service', () => {
     });
 
     it('should return empty array when PINECONE_API_KEY is not configured', async () => {
-      vi.spyOn(envConfig.config, 'PINECONE_API_KEY', 'get').mockReturnValue(undefined as any);
+      vi.spyOn(envConfig.config, 'PINECONE_API_KEY', 'get').mockReturnValue(
+        undefined as unknown as string
+      );
+      ragService = new RagService();
 
       const result = await ragService.retrieveComponents('test prompt');
 
@@ -129,7 +138,10 @@ describe('RAG Service', () => {
     });
 
     it('should return empty array when PINECONE_INDEX_HOST is not configured', async () => {
-      vi.spyOn(envConfig.config, 'PINECONE_INDEX_HOST', 'get').mockReturnValue(undefined as any);
+      vi.spyOn(envConfig.config, 'PINECONE_INDEX_HOST', 'get').mockReturnValue(
+        undefined as unknown as string
+      );
+      ragService = new RagService();
 
       const result = await ragService.retrieveComponents('test prompt');
 
@@ -137,10 +149,12 @@ describe('RAG Service', () => {
     });
 
     it('should retrieve and filter components by score threshold', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -174,10 +188,12 @@ describe('RAG Service', () => {
     });
 
     it('should use html field when available', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -202,10 +218,12 @@ describe('RAG Service', () => {
     });
 
     it('should fallback to code field when html is not available', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -230,10 +248,12 @@ describe('RAG Service', () => {
     });
 
     it('should fallback to chunk_text when other fields are not available', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -257,10 +277,12 @@ describe('RAG Service', () => {
     });
 
     it('should limit results to maximum 5 components', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -280,10 +302,12 @@ describe('RAG Service', () => {
     });
 
     it('should filter out empty strings', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -309,10 +333,12 @@ describe('RAG Service', () => {
     });
 
     it('should handle Pinecone API errors gracefully', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: false,
@@ -325,11 +351,11 @@ describe('RAG Service', () => {
     });
 
     it('should handle embedding service errors gracefully', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockRejectedValue(
-        new Error('Embedding service failed')
-      );
+      embedTextMock.mockRejectedValue(new Error('Embedding service failed'));
 
       const result = await ragService.retrieveComponents('test');
 
@@ -337,10 +363,12 @@ describe('RAG Service', () => {
     });
 
     it('should include task context in embedding query', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,
@@ -349,16 +377,27 @@ describe('RAG Service', () => {
 
       await ragService.retrieveComponents('create button');
 
-      expect(embeddingAnalysisService.embedText).toHaveBeenCalledWith(
-        'task: code retrieval | query: create button'
+      expect(embedTextMock).toHaveBeenCalledWith('task: code retrieval | query: create button');
+
+      const [endpoint, requestInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(endpoint).toBe('https://pinecone.example.com/records/namespaces/components/search');
+      expect(requestInit).toEqual(
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'X-Pinecone-Api-Version': '2025-10',
+          }),
+        })
       );
     });
 
     it('should handle null/undefined hits from Pinecone', async () => {
-      const { embeddingAnalysisService } = await import('../../src/services/embeddingAnalysis.service.js');
+      const { embeddingAnalysisService } =
+        await import('../../src/services/embeddingAnalysis.service.js');
       const mockVector = [0.1, 0.2, 0.3];
+      const embedTextMock = vi.mocked(embeddingAnalysisService['embedText']);
 
-      vi.mocked(embeddingAnalysisService.embedText).mockResolvedValue(mockVector);
+      embedTextMock.mockResolvedValue(mockVector);
 
       fetchMock.mockResolvedValue({
         ok: true,

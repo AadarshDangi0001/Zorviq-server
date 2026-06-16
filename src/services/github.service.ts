@@ -192,7 +192,11 @@ export const completeGitHubConnection = async (
 };
 
 export const getGitHubStatus = async (userId: string): Promise<GitHubConnectionStatus> => {
-  const user = await userModel.findById(userId).select('githubConnected githubUsername githubAvatar').lean().exec();
+  const user = await userModel
+    .findById(userId)
+    .select('githubConnected githubUsername githubAvatar')
+    .lean()
+    .exec();
 
   if (!user) {
     throw new NotFoundError('User not found');

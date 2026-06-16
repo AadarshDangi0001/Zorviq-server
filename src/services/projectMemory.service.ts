@@ -89,9 +89,17 @@ function truncateMiddle(value: string, maxLength: number): string {
   return `${trimmed.slice(0, half)}\n... [middle omitted] ...\n${trimmed.slice(-half)}`;
 }
 
+interface HexStringId {
+  toHexString(): string;
+}
+
+function hasHexStringId(value: object): value is HexStringId {
+  return 'toHexString' in value && typeof value.toHexString === 'function';
+}
+
 function recordId(record: GenerationMemoryRecord): string {
   const id = record._id;
-  if (id && typeof id === 'object' && 'toString' in id) return id.toString();
+  if (id && typeof id === 'object' && hasHexStringId(id)) return id.toHexString();
   return typeof id === 'string' ? id : '';
 }
 
@@ -143,7 +151,7 @@ function buildSignature(input: BuildContextInput): string {
           id: recordId(record),
           prompt: record.prompt,
           status: record.status,
-          output: record.status === 'done' ? record.output ?? null : null,
+          output: record.status === 'done' ? (record.output ?? null) : null,
           isSectionEdit: record.isSectionEdit ?? false,
           sectionId: record.sectionId ?? null,
           updatedAt: record.updatedAt?.toISOString?.() ?? null,
@@ -177,8 +185,7 @@ export function buildProjectMemoryContext(input: BuildContextInput): ProjectMemo
     sections.push('', 'Long-term semantic memories from vector DB:');
     sections.push(
       ...semantic.map(
-        (memory, index) =>
-          `Memory ${index + 1} (score ${memory.score.toFixed(3)}):\n${memory.text}`
+        (memory, index) => `Memory ${index + 1} (score ${memory.score.toFixed(3)}):\n${memory.text}`
       )
     );
   }
